@@ -122,5 +122,16 @@ pub const App = struct {
             const ypos = 0.1 * constants.DEFAULT_WINDOW_HEIGHT;
             self.typesetter.draw_text_world_centered_font_color(.{ .x = xpos, .y = ypos }, "Press and hold space", .debug, .{ .x = 1, .y = 1, .z = 1, .w = 1 });
         }
+        if (self.inputs.mouse.l_button.is_down) {
+            const moved = Vector2.subtract(self.inputs.mouse.current_pos, self.inputs.mouse.previous_pos);
+            std.debug.print("moving cam x={d}, y={d}\n", .{ moved.x, moved.y });
+            self.cam3d.position.x = self.cam3d.position.x + (moved.x / 1.0);
+            self.cam3d.position.y = self.cam3d.position.y + (moved.y / 1.0);
+        }
+        self.cam3d.update_view();
+    }
+
+    pub fn end_frame(self: *Self) void {
+        self.inputs.mouse.reset_mouse();
     }
 };

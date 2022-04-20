@@ -219,7 +219,7 @@ pub const Renderer = struct {
     pub fn render_app(self: *Self, ticks: u32, app: *App) void {
         _ = app;
         self.ticks = ticks;
-        c.glClearColor(0.0, 0.0, 0.0, 1.0);
+        c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
         self.draw_mesh(&app.cube);
         self.draw_buffers();
@@ -237,6 +237,7 @@ pub const Renderer = struct {
         c.glUseProgram(self.base_shader.program);
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glEnable(c.GL_BLEND);
+        c.glEnable(c.GL_DEPTH_TEST);
         c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
         c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "tex"), 0);
         c.glActiveTexture(c.GL_TEXTURE0);

@@ -657,12 +657,16 @@ pub const Camera3D = struct {
     projection: Matrix4_gl,
 
     pub fn new() Self {
-        const pos = Vector3_gl{ .z = -5.0, .x = 2.0 };
+        const pos = Vector3_gl{ .z = -5.0, .x = 2.0, .y = -3.0 };
         return .{
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
-            .projection = Matrix4_gl.perspective_projection(std.math.pi / 4.0, (1024.0 / 768.0), 0.1, 5000),
+            .projection = Matrix4_gl.perspective_projection(std.math.pi / 4.0, (16.0 / 9.0), 0.1, 5000),
         };
+    }
+
+    pub fn update_view(self: *Self) void {
+        self.view = Matrix4_gl.look_at(self.position, .{}, .{ .y = 1.0 });
     }
 };
 
@@ -731,8 +735,8 @@ pub const Mesh = struct {
         self.vertices.append(MeshVertex{ .position = p4, .normal = px }) catch unreachable;
         self.vertices.append(MeshVertex{ .position = p5, .normal = px }) catch unreachable;
         self.vertices.append(MeshVertex{ .position = p0, .normal = px }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p4, .normal = px }) catch unreachable;
         self.vertices.append(MeshVertex{ .position = p5, .normal = px }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p1, .normal = px }) catch unreachable;
         // 7326 nx
         self.vertices.append(MeshVertex{ .position = p7, .normal = nx }) catch unreachable;
         self.vertices.append(MeshVertex{ .position = p3, .normal = nx }) catch unreachable;
