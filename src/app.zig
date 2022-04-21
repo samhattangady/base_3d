@@ -123,16 +123,29 @@ pub const App = struct {
             const ypos = 0.1 * constants.DEFAULT_WINDOW_HEIGHT;
             self.typesetter.draw_text_world_centered_font_color(.{ .x = xpos, .y = ypos }, "Press and hold space", .debug, .{ .x = 1, .y = 1, .z = 1, .w = 1 });
         }
+        self.camera_controls();
+    }
+
+    pub fn camera_controls(self: *Self) void {
+        var should_update_view = false;
         if (self.inputs.mouse.l_button.is_down) {
-            const moved = Vector2.subtract(self.inputs.mouse.current_pos, self.inputs.mouse.previous_pos);
-            const x_rad = (moved.x * std.math.pi * 2) / self.cam2d.window_size.x;
-            const y_rad = (moved.y * std.math.pi * 2) / self.cam2d.window_size.y;
-            // rotation axis for y mouse movement... not actual y axis...
-            const y_axis = Vector3_gl.cross(self.cam3d.position, .{ .y = 1 }).normalized();
-            self.cam3d.position = self.cam3d.position.rotated_about_point_axis(.{}, .{ .y = 1 }, x_rad);
-            self.cam3d.position = self.cam3d.position.rotated_about_point_axis(.{}, y_axis, y_rad);
+            if (self.inputs.mouse.movement()) |moved| {
+                const x_rad = -1.0 * (moved.x * std.math.pi * 2) / self.cam2d.window_size.x;
+                const y_rad = -1.0 * (moved.y * std.math.pi * 2) / self.cam2d.window_size.y;
+                // rotation axis for y mouse movement... not actual y axis...
+                const y_axis = Vector3_gl.cross(self.cam3d.position.subtracted(self.cam3d.target), .{ .y = 1 }).normalized();
+                self.cam3d.position = self.cam3d.position.rotated_about_point_axis(self.cam3d.target, .{ .y = 1 }, x_rad);
+                self.cam3d.position = self.cam3d.position.rotated_about_point_axis(self.cam3d.target, y_axis, y_rad);
+                should_update_view = true;
+            }
         }
-        self.cam3d.update_view();
+        if (self.inputs.mouse.wheel_y != 0) {
+            const scrolled = @intToFloat(c.GLfloat, -self.inputs.mouse.wheel_y);
+            const zoom = std.math.pow(c.GLfloat, 1.1, scrolled);
+            self.cam3d.position = self.cam3d.position.scaled_anchor(zoom, self.cam3d.target);
+            should_update_view = true;
+        }
+        if (should_update_view) self.cam3d.update_view();
     }
 
     pub fn end_frame(self: *Self) void {

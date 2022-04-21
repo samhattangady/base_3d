@@ -350,6 +350,15 @@ pub const Vector3_gl = extern struct {
         return .{ .x = -v.x, .y = -v.y, .z = -v.z };
     }
 
+    pub fn scaled(v: *const Self, a: c.GLfloat) Self {
+        return .{ .x = v.x * a, .y = v.y * a, .z = v.z * a };
+    }
+
+    pub fn scaled_anchor(v: *const Self, a: c.GLfloat, point: Self) Self {
+        // TODO (21 Apr 2022 sam): Check that these operations happen in correct order
+        return v.subtracted(point).scaled(a).added(point);
+    }
+
     pub fn cross(v1: Vector3_gl, v2: Vector3_gl) Self {
         return .{
             .x = v1.y * v2.z - v1.z * v2.y,
@@ -611,8 +620,13 @@ pub const MouseState = struct {
         return (self.l_down_pos.distance_to_sqr(self.current_pos) > 0);
     }
 
-    pub fn movement(self: *Self) Vector2 {
-        return Vector2.subtract(self.previous_pos, self.current_pos);
+    pub fn movement(self: *Self) ?Vector2 {
+        const moved = Vector2.subtract(self.previous_pos, self.current_pos);
+        if (moved.x == 0 and moved.y == 0) {
+            return null;
+        } else {
+            return moved;
+        }
     }
 
     pub fn handle_input(self: *Self, event: c.SDL_Event, ticks: u32, camera: *Camera2D) void {
@@ -723,6 +737,7 @@ pub fn tex_remap(y_in: f32, y_height: usize, y_padding: usize) f32 {
 pub const Camera3D = struct {
     const Self = @This();
     position: Vector3_gl,
+    target: Vector3_gl = .{},
     view: Matrix4_gl,
     projection: Matrix4_gl,
 
@@ -736,7 +751,7 @@ pub const Camera3D = struct {
     }
 
     pub fn update_view(self: *Self) void {
-        self.view = Matrix4_gl.look_at(self.position, .{}, .{ .y = 1.0 });
+        self.view = Matrix4_gl.look_at(self.position, self.target, .{ .y = 1.0 });
     }
 };
 
