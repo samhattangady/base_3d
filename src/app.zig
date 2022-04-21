@@ -7,6 +7,7 @@ const TypeSetter = glyph_lib.TypeSetter;
 
 const helpers = @import("helpers.zig");
 const Vector2 = helpers.Vector2;
+const Vector3_gl = helpers.Vector3_gl;
 const Camera2D = helpers.Camera2D;
 const Camera3D = helpers.Camera3D;
 const SingleInput = helpers.SingleInput;
@@ -124,9 +125,12 @@ pub const App = struct {
         }
         if (self.inputs.mouse.l_button.is_down) {
             const moved = Vector2.subtract(self.inputs.mouse.current_pos, self.inputs.mouse.previous_pos);
-            std.debug.print("moving cam x={d}, y={d}\n", .{ moved.x, moved.y });
-            self.cam3d.position.x = self.cam3d.position.x + (moved.x / 1.0);
-            self.cam3d.position.y = self.cam3d.position.y + (moved.y / 1.0);
+            const x_rad = (moved.x * std.math.pi * 2) / self.cam2d.window_size.x;
+            const y_rad = (moved.y * std.math.pi * 2) / self.cam2d.window_size.y;
+            // rotation axis for y mouse movement... not actual y axis...
+            const y_axis = Vector3_gl.cross(self.cam3d.position, .{ .y = 1 }).normalized();
+            self.cam3d.position = self.cam3d.position.rotated_about_point_axis(.{}, .{ .y = 1 }, x_rad);
+            self.cam3d.position = self.cam3d.position.rotated_about_point_axis(.{}, y_axis, y_rad);
         }
         self.cam3d.update_view();
     }

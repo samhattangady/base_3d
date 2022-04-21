@@ -322,12 +322,32 @@ pub const Vector3_gl = extern struct {
     y: c.GLfloat = 0.0,
     z: c.GLfloat = 0.0,
 
+    pub fn add(v1: Vector3_gl, v2: Vector3_gl) Self {
+        return .{
+            .x = v1.x + v2.x,
+            .y = v1.y + v2.y,
+            .z = v1.z + v2.z,
+        };
+    }
+
     pub fn subtract(v1: Vector3_gl, v2: Vector3_gl) Self {
         return .{
             .x = v1.x - v2.x,
             .y = v1.y - v2.y,
             .z = v1.z - v2.z,
         };
+    }
+
+    pub fn added(v1: *const Self, v2: Self) Self {
+        return Vector3_gl.add(v1.*, v2);
+    }
+
+    pub fn subtracted(v1: *const Self, v2: Self) Self {
+        return Vector3_gl.subtract(v1.*, v2);
+    }
+
+    pub fn negated(v: *const Self) Self {
+        return .{ .x = -v.x, .y = -v.y, .z = -v.z };
     }
 
     pub fn cross(v1: Vector3_gl, v2: Vector3_gl) Self {
@@ -352,12 +372,39 @@ pub const Vector3_gl = extern struct {
         };
     }
 
+    pub fn normalized(v: *const Self) Self {
+        return Vector3_gl.normalize(v.*);
+    }
+
     pub fn length(v: Vector3_gl) c.GLfloat {
         return @sqrt(Vector3_gl.length_sqr(v));
     }
 
     pub fn length_sqr(v: Self) c.GLfloat {
         return v.x * v.x + v.y * v.y + v.z * v.z;
+    }
+
+    pub fn mat3_multiply(v: Self, mat: Matrix3_gl) Self {
+        return Matrix3_gl.vec3_multiply(mat, v);
+    }
+
+    /// a is in radians.
+    /// axis has to be normalized.
+    pub fn rotate_about_point_axis(v: Self, center: Self, axis: Self, a: c.GLfloat) Self {
+        // https://en.wikipedia.org/wiki/Rotation_matrix#Rotation_matrix_from_axis_and_angle
+        const cosa = @cos(a);
+        const omc = 1.0 - cosa;
+        const sina = @sin(a);
+        const matrix = Matrix3_gl.build(cosa + (axis.x * axis.x * omc), (axis.x * axis.y * omc) - (axis.z * sina), (axis.x * axis.z * omc) + (axis.y * sina), (axis.x * axis.y * omc) + (axis.z * sina), cosa + (axis.y * axis.y * omc), (axis.y * axis.z * omc) - (axis.x * sina), (axis.x * axis.z * omc) - (axis.y * sina), (axis.z * axis.y * omc) + (axis.x * sina), cosa + (axis.z * axis.z * omc));
+        const translated = v.subtracted(center);
+        const rotated = Self.mat3_multiply(translated, matrix);
+        return rotated.add(center);
+    }
+
+    /// a is in radians.
+    /// axis has to be normalized.
+    pub fn rotated_about_point_axis(v: *const Self, center: Self, axis: Self, a: c.GLfloat) Self {
+        return Vector3_gl.rotate_about_point_axis(v.*, center, axis, a);
     }
 };
 
@@ -398,6 +445,29 @@ pub const Vector4_gl = extern struct {
 
     pub fn is_equal_to(v1: *const Vector4_gl, v2: Vector4_gl) bool {
         return Vector4_gl.equals(v1.*, v2);
+    }
+};
+
+pub const Matrix3_gl = extern struct {
+    const Self = @This();
+    r0: Vector3_gl = .{},
+    r1: Vector3_gl = .{},
+    r2: Vector3_gl = .{},
+
+    pub fn build(r00: c.GLfloat, r01: c.GLfloat, r02: c.GLfloat, r10: c.GLfloat, r11: c.GLfloat, r12: c.GLfloat, r20: c.GLfloat, r21: c.GLfloat, r22: c.GLfloat) Self {
+        return .{
+            .r0 = .{ .x = r00, .y = r01, .z = r02 },
+            .r1 = .{ .x = r10, .y = r11, .z = r12 },
+            .r2 = .{ .x = r20, .y = r21, .z = r22 },
+        };
+    }
+
+    pub fn vec3_multiply(mat: Self, v: Vector3_gl) Vector3_gl {
+        return .{
+            .x = v.x * mat.r0.x + v.y * mat.r1.x + v.z * mat.r2.x,
+            .y = v.x * mat.r0.y + v.y * mat.r1.y + v.z * mat.r2.y,
+            .z = v.x * mat.r0.z + v.y * mat.r1.z + v.z * mat.r2.z,
+        };
     }
 };
 
