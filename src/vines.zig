@@ -83,6 +83,7 @@ pub const Vines = struct {
         // generate mesh
         var vertices = std.ArrayList(MeshVertex).init(self.allocator);
         defer vertices.deinit();
+        // TODO (23 Apr 2022 sam): I have a feeling there is something odd happening here. with the -1s etc.
         const NUM_EDGES = 7.0;
         const NUM_EDGESi = @floatToInt(usize, NUM_EDGES);
         i = v_start_index;
@@ -100,6 +101,21 @@ pub const Vines = struct {
                 cube.set_position(vp.position);
                 cube.set_scalef(0.03);
                 self.mesh.append_mesh(&cube);
+            }
+        }
+        {
+            // round off base end
+            const p0 = self.points.items[v_start_index];
+            const size = vertices.items[0].position.subtracted(p0.position).length();
+            const base = p0.position.added(p0.direction.scaled(-size * 0.5));
+            const base_vertex = MeshVertex{ .position = base, .normal = p0.direction.negated() };
+            var j: usize = 0;
+            while (j < NUM_EDGESi) : (j += 1) {
+                const v0 = vertices.items[j];
+                const v1 = if (j == NUM_EDGESi - 1) vertices.items[0] else vertices.items[j + 1];
+                self.mesh.vertices.append(base_vertex) catch unreachable;
+                self.mesh.vertices.append(v0) catch unreachable;
+                self.mesh.vertices.append(v1) catch unreachable;
             }
         }
         i = 0;
@@ -120,6 +136,22 @@ pub const Vines = struct {
                 self.mesh.vertices.append(vp1) catch unreachable;
                 self.mesh.vertices.append(vp3) catch unreachable;
                 self.mesh.vertices.append(vp2) catch unreachable;
+            }
+        }
+        {
+            // round off tip end
+            const p0 = self.points.items[self.points.items.len - 1];
+            const size = vertices.items[vertices.items.len - 1].position.subtracted(p0.position).length();
+            const tip = p0.position.added(p0.direction.scaled(size * 1.0));
+            const tip_vertex = MeshVertex{ .position = tip, .normal = p0.direction };
+            var j: usize = 0;
+            const last_loop = vertices.items.len - NUM_EDGESi;
+            while (j < NUM_EDGESi) : (j += 1) {
+                const v0 = vertices.items[j + last_loop];
+                const v1 = if (j == NUM_EDGESi - 1) vertices.items[last_loop] else vertices.items[last_loop + j + 1];
+                self.mesh.vertices.append(tip_vertex) catch unreachable;
+                self.mesh.vertices.append(v0) catch unreachable;
+                self.mesh.vertices.append(v1) catch unreachable;
             }
         }
         self.num_vines += 1;
