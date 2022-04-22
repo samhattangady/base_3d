@@ -473,6 +473,18 @@ pub const Vector3_gl = extern struct {
         return .{ .x = v.x / a.x, .y = v.y / a.y, .z = v.z / a.z };
     }
 
+    pub fn lerp(v1: Vector3_gl, v2: Vector3_gl, t: f32) Vector3_gl {
+        return Vector3_gl{
+            .x = lerpf(v1.x, v2.x, t),
+            .y = lerpf(v1.y, v2.y, t),
+            .z = lerpf(v1.z, v2.z, t),
+        };
+    }
+
+    pub fn lerped(v1: *const Vector3_gl, v2: Vector3_gl, t: f32) Vector3_gl {
+        return Vector3_gl.lerp(v1.*, v2, t);
+    }
+
     pub fn cross(v1: Vector3_gl, v2: Vector3_gl) Self {
         return .{
             .x = v1.y * v2.z - v1.z * v2.y,
@@ -712,17 +724,17 @@ pub const Matrix4_gl = extern struct {
         const n = near;
         const f = far;
         return Matrix4_gl.build(
-            n / r,
+            -n / r, // xpos is to right
             0.0,
             0.0,
             0.0,
             0.0,
-            -n / t,
+            -n / t, // ypos is down
             0.0,
             0.0,
             0.0,
             0.0,
-            -((f + n) / (f - n)),
+            -((f + n) / (f - n)), // zpos is to inside
             -1.0,
             0.0,
             0.0,
@@ -941,7 +953,7 @@ pub const Camera3D = struct {
     aspect_ratio: glf = (16.0 / 9.0),
 
     pub fn new() Self {
-        const pos = Vector3_gl{ .z = -5.0, .x = 2.0, .y = -3.0 };
+        const pos = Vector3_gl{ .z = -5.0, .x = 1.0, .y = -0.7 };
         return .{
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
@@ -993,6 +1005,11 @@ pub const Mesh = struct {
         for (self.vertices.items) |*vertex| {
             vertex.position = vertex.position.added(offset);
         }
+    }
+
+    pub fn set_scalef(self: *Self, scale: glf) void {
+        const scale_vec = Vector3_gl{ .x = scale, .y = scale, .z = scale };
+        self.set_scale(scale_vec);
     }
 
     pub fn set_scale(self: *Self, scale: Vector3_gl) void {
@@ -1070,3 +1087,8 @@ pub const Mesh = struct {
         return self;
     }
 };
+
+// checks if a value is very close to 0
+pub fn sdf_check(val: glf) bool {
+    return (val >= -0.01 and val <= 0.01);
+}

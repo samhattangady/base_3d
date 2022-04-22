@@ -75,6 +75,15 @@ pub const InputState = struct {
     }
 };
 
+pub fn sdf_default_cube(point: Vector3_gl) glf {
+    const size = Vector3_gl{ .x = 0.5, .y = 0.5, .z = 0.5 };
+    // https://iquilezles.org/articles/distfunctions/
+    // vec3 q = abs(p) - b;
+    // return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0)
+    const q = (point.absed()).subtracted(size);
+    return q.maxed(0.0).length() + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
 pub const App = struct {
     const Self = @This();
     typesetter: TypeSetter = undefined,
@@ -94,19 +103,18 @@ pub const App = struct {
             .allocator = allocator,
             .arena = arena,
             .cube = Mesh.unit_cube(allocator),
-            .vines = Vines.new(allocator),
+            .vines = Vines.init(allocator),
             .cam3d = Camera3D.new(),
         };
     }
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
-        var points = std.ArrayList(Vector3_gl).init(self.allocator);
-        defer points.deinit();
-        points.append(.{ .x = 1.0 }) catch unreachable;
-        points.append(.{ .x = 0.5 }) catch unreachable;
-        points.append(.{ .x = 0.5, .y = 0.5, .z = 0.5 }) catch unreachable;
-        self.vines.grow(points.items);
+        const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.2 };
+        const dir = Vector3_gl{ .x = 1.0, .y = -0.2 };
+        _ = point;
+
+        self.vines.grow(point, dir.normalized(), sdf_default_cube);
     }
 
     pub fn deinit(self: *Self) void {
@@ -132,12 +140,7 @@ pub const App = struct {
 
     pub fn sdf_cube(self: *Self, point: Vector3_gl) c.GLfloat {
         _ = self;
-        const size = Vector3_gl{ .x = 0.5, .y = 0.5, .z = 0.5 };
-        // https://iquilezles.org/articles/distfunctions/
-        // vec3 q = abs(p) - b;
-        // return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0)
-        const q = (point.absed()).subtracted(size);
-        return q.maxed(0.0).length() + min(max(q.x, max(q.y, q.z)), 0.0);
+        return sdf_default_cube(point);
     }
 
     // TODO (22 Apr 2022 sam): The direction calculation of the ray is wrong here. Needs to be fixed.
@@ -215,7 +218,7 @@ pub const App = struct {
         var should_update_view = false;
         if (self.inputs.mouse.l_button.is_down) {
             if (self.inputs.mouse.movement()) |moved| {
-                const x_rad = -1.0 * (moved.x * std.math.pi * 2) / self.cam2d.window_size.x;
+                const x_rad = 1.0 * (moved.x * std.math.pi * 2) / self.cam2d.window_size.x;
                 const y_rad = -1.0 * (moved.y * std.math.pi * 2) / self.cam2d.window_size.y;
                 // rotation axis for y mouse movement... not actual y axis...
                 const y_axis = Vector3_gl.cross(self.cam3d.position.subtracted(self.cam3d.target), .{ .y = 1 }).normalized();
