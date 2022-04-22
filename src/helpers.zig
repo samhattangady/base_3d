@@ -539,6 +539,10 @@ pub const Vector3_gl = extern struct {
         return Self.length_sqr(v1.subtracted(v2));
     }
 
+    pub fn distance(v1: Self, v2: Self) glf {
+        return @sqrt(Self.length_sqr(v1.subtracted(v2)));
+    }
+
     pub fn mat3_multiply(v: Self, mat: Matrix3_gl) Self {
         return Matrix3_gl.vec3_multiply(mat, v);
     }
