@@ -1,3 +1,5 @@
+// leaves is a 3d visualisation of leaves climbing an object.
+
 const std = @import("std");
 const c = @import("c.zig");
 const constants = @import("constants.zig");
@@ -5,9 +7,13 @@ const constants = @import("constants.zig");
 const glyph_lib = @import("glyphee.zig");
 const TypeSetter = glyph_lib.TypeSetter;
 
+const vines_lib = @import("vines.zig");
+const Vines = vines_lib.Vines;
+
 const helpers = @import("helpers.zig");
 const Vector2 = helpers.Vector2;
 const Vector3_gl = helpers.Vector3_gl;
+const Matrix3_gl = helpers.Matrix3_gl;
 const Camera2D = helpers.Camera2D;
 const Camera3D = helpers.Camera3D;
 const SingleInput = helpers.SingleInput;
@@ -15,6 +21,7 @@ const MouseState = helpers.MouseState;
 const EditableText = helpers.EditableText;
 const Mesh = helpers.Mesh;
 const TYPING_BUFFER_SIZE = 16;
+const glf = c.GLfloat;
 
 const InputKey = enum {
     shift,
@@ -38,6 +45,8 @@ const INPUT_MAPPING = [_]InputMap{
     .{ .key = c.SDLK_SPACE, .input = .space },
     .{ .key = c.SDLK_ESCAPE, .input = .escape },
 };
+const min = std.math.min;
+const max = std.math.max;
 
 pub const InputState = struct {
     const Self = @This();
@@ -77,23 +86,33 @@ pub const App = struct {
     quit: bool = false,
     cube: Mesh,
     inputs: InputState = .{},
+    vines: Vines,
+    debug: c.GLint = 0,
 
     pub fn new(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
             .arena = arena,
             .cube = Mesh.unit_cube(allocator),
+            .vines = Vines.new(allocator),
             .cam3d = Camera3D.new(),
         };
     }
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
+        var points = std.ArrayList(Vector3_gl).init(self.allocator);
+        defer points.deinit();
+        points.append(.{ .x = 1.0 }) catch unreachable;
+        points.append(.{ .x = 0.5 }) catch unreachable;
+        points.append(.{ .x = 0.5, .y = 0.5, .z = 0.5 }) catch unreachable;
+        self.vines.grow(points.items);
     }
 
     pub fn deinit(self: *Self) void {
         self.typesetter.deinit();
         self.cube.deinit();
+        self.vines.deinit();
     }
 
     pub fn handle_inputs(self: *Self, event: c.SDL_Event) void {
@@ -111,9 +130,71 @@ pub const App = struct {
         }
     }
 
+    pub fn sdf_cube(self: *Self, point: Vector3_gl) c.GLfloat {
+        _ = self;
+        const size = Vector3_gl{ .x = 0.5, .y = 0.5, .z = 0.5 };
+        // https://iquilezles.org/articles/distfunctions/
+        // vec3 q = abs(p) - b;
+        // return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0)
+        const q = (point.absed()).subtracted(size);
+        return q.maxed(0.0).length() + min(max(q.x, max(q.y, q.z)), 0.0);
+    }
+
+    // TODO (22 Apr 2022 sam): The direction calculation of the ray is wrong here. Needs to be fixed.
+    pub fn ray_march(self: *Self, mouse_pos: Vector2) bool {
+        const start = self.cam3d.position;
+        // const forward = Vector3_gl{ .z = 1 };
+        const lookat = self.cam3d.target.subtracted(self.cam3d.position).normalized();
+        // we want a plane at z = 1, assuming the camera is at origin.
+        const dx = std.math.tan(self.cam3d.fov * self.cam3d.aspect_ratio / 2.0);
+        const dy = std.math.tan(self.cam3d.fov / 2.0);
+        // we then find the point on that plane wrt mouse position, and get its length
+        const px = ((mouse_pos.x / self.cam2d.window_size.x) * 2.0 - 1.0) * dx;
+        const py = ((mouse_pos.y / self.cam2d.window_size.y) * 2.0 - 1.0) * dy;
+        const point = Vector3_gl{ .x = px, .y = py, .z = 1 };
+        // We then rotate the lookat based on the mouse pos, and scale to fit length
+        const yaw_angle = ((mouse_pos.x / self.cam2d.window_size.x) * 2.0 - 1.0) * (self.cam3d.fov * self.cam3d.aspect_ratio / 2.0);
+        const pitch_angle = ((mouse_pos.y / self.cam2d.window_size.y) * 2.0 - 1.0) * (self.cam3d.fov / 2.0);
+        var direction = lookat.rotated_about_point_axis(.{}, self.cam3d.up, yaw_angle);
+        direction = direction.rotated_about_point_axis(.{}, lookat.crossed(self.cam3d.up), -pitch_angle);
+        const length = point.length();
+        direction = direction.scaled(length);
+        var dist: glf = 0.0;
+        var i: usize = 0;
+        var pos = start;
+        while (i < 100) : (i += 1) {
+            var d = self.sdf_cube(pos);
+            pos = pos.added(direction.scaled(d));
+            dist += d;
+            if (d < 0.01) {
+                return true;
+            }
+            if (dist > 20.0) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    pub fn debug_ray_march(self: *Self) void {
+        if (false) {
+            self.debug = if (self.ray_march(self.inputs.mouse.current_pos)) 1 else 0;
+            var x: f32 = 0;
+            while (x < self.cam2d.window_size.x) : (x += 8) {
+                var y: f32 = 0;
+                while (y < self.cam2d.window_size.y) : (y += 8) {
+                    if (self.ray_march(.{ .x = x, .y = y })) {
+                        self.typesetter.draw_text_world_centered_font_color(.{ .x = x, .y = y }, "+", .debug, .{ .x = 1, .y = 0, .z = 0, .w = 1 });
+                    }
+                }
+            }
+        }
+    }
+
     pub fn update(self: *Self, ticks: u32, arena: std.mem.Allocator) void {
         self.ticks = ticks;
         self.arena = arena;
+        self.debug = if (self.inputs.get_key(.space).is_down) 1 else 0;
         if (self.inputs.get_key(.space).is_down) {
             const xpos = (@sin(@intToFloat(f32, self.ticks) / 2000.0) * 0.5 + 0.5) * constants.DEFAULT_WINDOW_WIDTH;
             const ypos = (@sin(@intToFloat(f32, self.ticks) / 1145.0) * 0.5 + 0.5) * constants.DEFAULT_WINDOW_HEIGHT;
@@ -122,6 +203,10 @@ pub const App = struct {
             const xpos = 0.1 * constants.DEFAULT_WINDOW_WIDTH;
             const ypos = 0.1 * constants.DEFAULT_WINDOW_HEIGHT;
             self.typesetter.draw_text_world_centered_font_color(.{ .x = xpos, .y = ypos }, "Press and hold space", .debug, .{ .x = 1, .y = 1, .z = 1, .w = 1 });
+        }
+        self.debug_ray_march();
+        if (self.inputs.mouse.m_button.is_clicked) {
+            std.debug.print("mouse_pos = {d}, {d}\n", .{ self.inputs.mouse.current_pos.x, self.inputs.mouse.current_pos.y });
         }
         self.camera_controls();
     }

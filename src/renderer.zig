@@ -221,7 +221,8 @@ pub const Renderer = struct {
         self.ticks = ticks;
         c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
-        self.draw_mesh(&app.cube);
+        self.draw_mesh(app, &app.cube);
+        self.draw_mesh(app, &app.vines.mesh);
         self.draw_buffers();
         c.SDL_GL_SwapWindow(self.window);
         self.clear_buffers();
@@ -233,13 +234,14 @@ pub const Renderer = struct {
         self.draw_shader_buffers(&self.text_shader);
     }
 
-    fn draw_mesh(self: *Self, mesh: *const Mesh) void {
+    fn draw_mesh(self: *Self, app: *const App, mesh: *const Mesh) void {
         c.glUseProgram(self.base_shader.program);
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glEnable(c.GL_BLEND);
         c.glEnable(c.GL_DEPTH_TEST);
         c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
         c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "tex"), 0);
+        c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "debug"), app.debug);
         c.glActiveTexture(c.GL_TEXTURE0);
         c.glBindTexture(c.GL_TEXTURE_2D, self.base_shader.texture);
         {
