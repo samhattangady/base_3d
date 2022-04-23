@@ -1,1 +1,1 @@
-time zig build && zig-out/bin/basic_3d
+time zig build -Dwindows=false && zig-out/bin/basic_3d
