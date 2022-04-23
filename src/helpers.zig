@@ -988,7 +988,7 @@ pub const Mesh = struct {
     // view: Matrix4_gl,
     // projection: Matrix4_gl,
 
-    pub fn new(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: std.mem.Allocator) Self {
         var self = Self{
             .vertices = std.ArrayList(MeshVertex).init(allocator),
             .position = .{},
@@ -1031,7 +1031,7 @@ pub const Mesh = struct {
 
     /// returns the mesh of a cube of side 1 with center at origin.
     pub fn unit_cube(allocator: std.mem.Allocator) Self {
-        var self = Mesh.new(allocator);
+        var self = Mesh.init(allocator);
         const p0 = Vector3_gl{ .x = 0.5, .y = 0.5, .z = -0.5 };
         const p1 = Vector3_gl{ .x = 0.5, .y = -0.5, .z = -0.5 };
         const p2 = Vector3_gl{ .x = -0.5, .y = -0.5, .z = -0.5 };

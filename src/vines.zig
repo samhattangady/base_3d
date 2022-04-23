@@ -28,19 +28,31 @@ pub const Vines = struct {
     mesh: Mesh,
     points: std.ArrayList(VinePoint),
     allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
     num_vines: usize = 0,
+    ticks: u32 = 0,
+    /// stores the start_index and num_points in each vine
+    vines: std.ArrayList([2]usize),
 
-    pub fn init(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return .{
-            .mesh = Mesh.new(allocator),
+            .mesh = Mesh.init(allocator),
             .points = std.ArrayList(VinePoint).init(allocator),
+            .vines = std.ArrayList([2]usize).init(allocator),
             .allocator = allocator,
+            .arena = arena,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.mesh.deinit();
         self.points.deinit();
+        self.vines.deinit();
+    }
+
+    pub fn update(self: *Self, ticks: u32, arena: std.mem.Allocator) void {
+        self.ticks = ticks;
+        self.arena = arena;
     }
 
     pub fn grow(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, ccw: bool) void {
@@ -55,6 +67,7 @@ pub const Vines = struct {
             self.points.append(.{ .position = pos, .direction = dir, .vine_index = self.num_vines }) catch unreachable;
         }
         const num_points = 1 + self.points.items.len - v_start_index;
+        self.vines.append(.{ v_start_index, num_points }) catch unreachable;
         std.debug.assert(self.points.items.len > 0);
         // get length of current vine
         var total_len: glf = 0.0;
@@ -80,15 +93,65 @@ pub const Vines = struct {
             }
             self.points.items[self.points.items.len - 1].scale = 0.0;
         }
-        // generate mesh
-        var vertices = std.ArrayList(MeshVertex).init(self.allocator);
+        self.num_vines += 1;
+    }
+
+    pub fn regenerate_mesh(self: *Self, raw_amount: glf) void {
+        self.mesh.deinit();
+        self.mesh = Mesh.init(self.allocator);
+        if (raw_amount < 0) return;
+        const amount = std.math.clamp(raw_amount, 0.001, 1.0);
+        for (self.vines.items) |vine| {
+            var i: usize = 0;
+            const v_start_index = vine[0];
+            const num_points = vine[1];
+            // calculate all the points that are present in amount
+            var current_points = std.ArrayList(VinePoint).init(self.arena);
+            defer current_points.deinit();
+            i = v_start_index;
+            var need_lerped_point = true;
+            while (i < v_start_index + num_points) : (i += 1) {
+                const vp = self.points.items[i];
+                const progress = 1.0 - vp.scale;
+                if (progress < amount) {
+                    var new_vp = vp;
+                    new_vp.scale = amount * vp.scale;
+                    // TODO (23 Apr 2022 sam): update point scale to match the progress
+                    current_points.append(new_vp) catch unreachable;
+                } else {
+                    // TODO (23 Apr 2022 sam): We also need to check progress == amount here?
+                    if (progress == amount) need_lerped_point = false;
+                    break;
+                }
+            }
+            if (need_lerped_point) {
+                // generate a point that is at exactly progress = amount
+                const prev_point = self.points.items[i - 1];
+                const cur_point = self.points.items[i];
+                const prev_progress = 1.0 - prev_point.scale;
+                const cur_progress = 1.0 - cur_point.scale;
+                std.debug.assert(prev_progress < amount and amount < cur_progress);
+                const t = helpers.unlerpf(prev_progress, cur_progress, amount);
+                const point = VinePoint{
+                    .position = prev_point.position.lerped(cur_point.position, t),
+                    // TODO (23 Apr 2022 sam): what should the direction be?
+                    .direction = prev_point.direction,
+                    .scale = helpers.lerpf(amount * prev_point.scale, amount * cur_point.scale, t),
+                    .vine_index = prev_point.vine_index,
+                };
+                current_points.append(point) catch unreachable;
+            }
+            self.generate_single_vine_mesh(current_points.items[0..]);
+        }
+    }
+
+    fn generate_single_vine_mesh(self: *Self, points: []VinePoint) void {
+        var vertices = std.ArrayList(MeshVertex).init(self.arena);
         defer vertices.deinit();
-        // TODO (23 Apr 2022 sam): I have a feeling there is something odd happening here. with the -1s etc.
+        // TODO (23 Apr 2022 sam): I have a feeling there is something odd with NUMEDGES. with the -1s etc.
         const NUM_EDGES = 7.0;
         const NUM_EDGESi = @floatToInt(usize, NUM_EDGES);
-        i = v_start_index;
-        while (i < self.points.items.len) : (i += 1) {
-            const vp = self.points.items[i];
+        for (points) |vp| {
             const p1 = vp.position.added(.{ .y = 0.005 + 0.08 * vp.scale });
             var angle: glf = 0.0;
             while (angle < helpers.TWO_PI) : (angle += helpers.TWO_PI / (NUM_EDGES - 1.0)) {
@@ -96,7 +159,7 @@ pub const Vines = struct {
                 vertices.append(.{ .position = p, .normal = p.subtracted(vp.position).normalized() }) catch unreachable;
             }
             if (false) {
-                var cube = Mesh.unit_cube(self.allocator);
+                var cube = Mesh.unit_cube(self.arena);
                 defer cube.deinit();
                 cube.set_position(vp.position);
                 cube.set_scalef(0.03);
@@ -105,7 +168,7 @@ pub const Vines = struct {
         }
         {
             // round off base end
-            const p0 = self.points.items[v_start_index];
+            const p0 = points[0];
             const size = vertices.items[0].position.subtracted(p0.position).length();
             const base = p0.position.added(p0.direction.scaled(-size * 0.5));
             const base_vertex = MeshVertex{ .position = base, .normal = p0.direction.negated() };
@@ -118,8 +181,8 @@ pub const Vines = struct {
                 self.mesh.vertices.append(v1) catch unreachable;
             }
         }
-        i = 0;
-        while (i < num_points - 2) : (i += 1) {
+        var i: usize = 0;
+        while (i < points.len - 1) : (i += 1) {
             var j: usize = 0;
             while (j < NUM_EDGESi) : (j += 1) {
                 const ind0 = (i * NUM_EDGESi) + j;
@@ -140,7 +203,7 @@ pub const Vines = struct {
         }
         {
             // round off tip end
-            const p0 = self.points.items[self.points.items.len - 1];
+            const p0 = points[points.len - 1];
             const size = vertices.items[vertices.items.len - 1].position.subtracted(p0.position).length();
             const tip = p0.position.added(p0.direction.scaled(size * 1.0));
             const tip_vertex = MeshVertex{ .position = tip, .normal = p0.direction };
@@ -154,7 +217,6 @@ pub const Vines = struct {
                 self.mesh.vertices.append(v1) catch unreachable;
             }
         }
-        self.num_vines += 1;
     }
 
     pub fn get_next_pos(self: *Self, point: Vector3_gl, direction: *Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, ccw: bool) Vector3_gl {

@@ -103,7 +103,7 @@ pub const App = struct {
             .allocator = allocator,
             .arena = arena,
             .cube = Mesh.unit_cube(allocator),
-            .vines = Vines.init(allocator),
+            .vines = Vines.init(allocator, arena),
             .cam3d = Camera3D.new(),
         };
     }
@@ -120,6 +120,7 @@ pub const App = struct {
             const dir = Vector3_gl{ .z = 1.0, .y = -0.1 };
             self.vines.grow(point, dir.normalized(), sdf_default_cube, false);
         }
+        self.vines.regenerate_mesh(0.5);
     }
 
     pub fn deinit(self: *Self) void {
@@ -203,18 +204,11 @@ pub const App = struct {
         self.ticks = ticks;
         self.arena = arena;
         self.debug = if (self.inputs.get_key(.space).is_down) 1 else 0;
-        if (self.inputs.get_key(.space).is_down) {
-            const xpos = (@sin(@intToFloat(f32, self.ticks) / 2000.0) * 0.5 + 0.5) * constants.DEFAULT_WINDOW_WIDTH;
-            const ypos = (@sin(@intToFloat(f32, self.ticks) / 1145.0) * 0.5 + 0.5) * constants.DEFAULT_WINDOW_HEIGHT;
-            self.typesetter.draw_text_world_centered_font_color(.{ .x = xpos, .y = ypos }, "SDL here hi!", .debug, .{ .x = 1, .y = 1, .z = 1, .w = 1 });
-        } else {
-            const xpos = 0.1 * constants.DEFAULT_WINDOW_WIDTH;
-            const ypos = 0.1 * constants.DEFAULT_WINDOW_HEIGHT;
-            self.typesetter.draw_text_world_centered_font_color(.{ .x = xpos, .y = ypos }, "Press and hold space", .debug, .{ .x = 1, .y = 1, .z = 1, .w = 1 });
-        }
         self.debug_ray_march();
-        if (self.inputs.mouse.m_button.is_clicked) {
-            std.debug.print("mouse_pos = {d}, {d}\n", .{ self.inputs.mouse.current_pos.x, self.inputs.mouse.current_pos.y });
+        self.vines.update(ticks, arena);
+        if (self.inputs.mouse.m_button.is_down) {
+            const amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
+            self.vines.regenerate_mesh(amount);
         }
         self.camera_controls();
     }
