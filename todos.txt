@@ -1,0 +1,13 @@
+[ ] Create spawning algorithm for the vine initial positions
+[ ] Fix winding algorithm to work with all shapes
+[ ] Render the sdf
+[ ] Add randomness to vine growth algorithm
+[ ] Add thickness controls to the vines.
+    [ ] Limit max thickness of vine
+[ ] Add branching
+[ ] Figure out how to end vine growth
+
+---
+
+[ ] Why does gvim on linux not work correctly with autoformat zig?
+    But vim in terminal does...

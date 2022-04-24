@@ -84,6 +84,10 @@ pub fn sdf_default_cube(point: Vector3_gl) glf {
     return q.maxed(0.0).length() + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 
+pub fn sdf_default_sphere(point: Vector3_gl) glf {
+    return point.length() - 0.5;
+}
+
 pub const App = struct {
     const Self = @This();
     typesetter: TypeSetter = undefined,
@@ -110,15 +114,35 @@ pub const App = struct {
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
-        {
-            const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.2 };
-            const dir = Vector3_gl{ .x = 1.0, .y = -0.2 };
-            self.vines.grow(point, dir.normalized(), sdf_default_cube, true);
+        if (true) {
+            // cube
+            {
+                const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.3 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -0.2 };
+                const axis = Vector3_gl{ .y = 1.0 };
+                self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, true);
+            }
+            {
+                const point = Vector3_gl{ .x = -0.5, .y = 0.5, .z = -0.3 };
+                const dir = Vector3_gl{ .z = 1.0, .y = -0.1 };
+                const axis = Vector3_gl{ .y = 1.0 };
+                self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, false);
+            }
         }
-        {
-            const point = Vector3_gl{ .x = -0.5, .y = 0.5, .z = -0.2 };
-            const dir = Vector3_gl{ .z = 1.0, .y = -0.1 };
-            self.vines.grow(point, dir.normalized(), sdf_default_cube, false);
+        if (false) {
+            // {
+            //     const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
+            //     const dir = Vector3_gl{ .z = -1.0, .y = -0.1 };
+            //     self.vines.grow(point, dir.normalized(), sdf_default_sphere, false);
+            //    const axis = Vector3_gl{.y =1.0};
+            //    self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, false);
+            // }
+            {
+                const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
+                const dir = Vector3_gl{ .z = -1.0, .y = -0.1 };
+                const axis = Vector3_gl{ .x = 1.0 };
+                self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, true);
+            }
         }
         self.vines.regenerate_mesh(0.5);
     }

@@ -1,3 +1,11 @@
 23 Apr 2022:
 So I think we can start off the day by making the growing animation work. We
 can the figure out where we want to go after that's done.
+
+---
+
+24 Apr 2022:
+There are a few things that we can potentially work on now. One is to try and
+get the spawning positions and directions to be smoother. Second is to fix the
+winding algorithm so that it behaves how we might want it to. Third is to figure
+out how to render the sdf itself...
