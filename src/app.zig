@@ -158,12 +158,12 @@ pub const App = struct {
         const dx = std.math.tan(self.cam3d.fov * self.cam3d.aspect_ratio / 2.0);
         const dy = std.math.tan(self.cam3d.fov / 2.0);
         // we then find the point on that plane wrt mouse position, and get its length
-        const px = ((mouse_pos.x / self.cam2d.window_size.x) * 2.0 - 1.0) * dx;
-        const py = ((mouse_pos.y / self.cam2d.window_size.y) * 2.0 - 1.0) * dy;
+        const px = ((mouse_pos.x / self.cam2d.render_size().x) * 2.0 - 1.0) * dx;
+        const py = ((mouse_pos.y / self.cam2d.render_size().y) * 2.0 - 1.0) * dy;
         const point = Vector3_gl{ .x = px, .y = py, .z = 1 };
         // We then rotate the lookat based on the mouse pos, and scale to fit length
-        const yaw_angle = ((mouse_pos.x / self.cam2d.window_size.x) * 2.0 - 1.0) * (self.cam3d.fov * self.cam3d.aspect_ratio / 2.0);
-        const pitch_angle = ((mouse_pos.y / self.cam2d.window_size.y) * 2.0 - 1.0) * (self.cam3d.fov / 2.0);
+        const yaw_angle = ((mouse_pos.x / self.cam2d.render_size().x) * 2.0 - 1.0) * (self.cam3d.fov * self.cam3d.aspect_ratio / 2.0);
+        const pitch_angle = ((mouse_pos.y / self.cam2d.render_size().y) * 2.0 - 1.0) * (self.cam3d.fov / 2.0);
         var direction = lookat.rotated_about_point_axis(.{}, self.cam3d.up, yaw_angle);
         direction = direction.rotated_about_point_axis(.{}, lookat.crossed(self.cam3d.up), -pitch_angle);
         const length = point.length();
@@ -189,9 +189,9 @@ pub const App = struct {
         if (false) {
             self.debug = if (self.ray_march(self.inputs.mouse.current_pos)) 1 else 0;
             var x: f32 = 0;
-            while (x < self.cam2d.window_size.x) : (x += 8) {
+            while (x < self.cam2d.render_size().x) : (x += 8) {
                 var y: f32 = 0;
-                while (y < self.cam2d.window_size.y) : (y += 8) {
+                while (y < self.cam2d.render_size().y) : (y += 8) {
                     if (self.ray_march(.{ .x = x, .y = y })) {
                         self.typesetter.draw_text_world_centered_font_color(.{ .x = x, .y = y }, "+", .debug, .{ .x = 1, .y = 0, .z = 0, .w = 1 });
                     }
@@ -206,7 +206,7 @@ pub const App = struct {
         self.debug = if (self.inputs.get_key(.space).is_down) 1 else 0;
         self.debug_ray_march();
         self.vines.update(ticks, arena);
-        if (self.inputs.mouse.m_button.is_down) {
+        if (self.inputs.mouse.r_button.is_down) {
             const amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
             self.vines.regenerate_mesh(amount);
         }
@@ -217,8 +217,8 @@ pub const App = struct {
         var should_update_view = false;
         if (self.inputs.mouse.l_button.is_down) {
             if (self.inputs.mouse.movement()) |moved| {
-                const x_rad = 1.0 * (moved.x * std.math.pi * 2) / self.cam2d.window_size.x;
-                const y_rad = -1.0 * (moved.y * std.math.pi * 2) / self.cam2d.window_size.y;
+                const x_rad = 1.0 * (moved.x * std.math.pi * 2) / self.cam2d.render_size().x;
+                const y_rad = -1.0 * (moved.y * std.math.pi * 2) / self.cam2d.render_size().y;
                 // rotation axis for y mouse movement... not actual y axis...
                 const y_axis = Vector3_gl.cross(self.cam3d.position.subtracted(self.cam3d.target), .{ .y = 1 }).normalized();
                 self.cam3d.position = self.cam3d.position.rotated_about_point_axis(self.cam3d.target, .{ .y = 1 }, x_rad);
