@@ -9,3 +9,63 @@ There are a few things that we can potentially work on now. One is to try and
 get the spawning positions and directions to be smoother. Second is to fix the
 winding algorithm so that it behaves how we might want it to. Third is to figure
 out how to render the sdf itself...
+
+---
+
+25 Apr 2022:
+There are a lot of things that we can work on now. I am not sure what would be
+the best way to start off for today. I luckily have a bunch of things that I
+ahve marked out as todo. So that might be a good way to start...
+
+Honestly, what I want to do is the render the sdf. That seems like it would be
+the most fun. But I don't know how to do that especially with trying to then
+generate 3d poly meshes about iit.
+
+Okay. It looks like the marching cubes algorithm is the best way to go about
+this. So from what I understand, we create cubes spread out across the space.
+Then at each cube, we query the eight corners, and check if it lies within the
+cube. Then we according the the ones that lie within, we can easily create the
+appropriate triangles.
+
+I have seen a fiew videos about this process, but I am not sure exactly how we
+create the meshes. Apparently, there are only 15 different possibilitues. I
+think it should be 16 (they don't seem to count all points inside), but whatevs.
+
+I think I was reading into it a little extra. The cubes have all vertices at
+half way between the two points. For some reason, I had it such that they were
+not always at the half way point, which suggested some increased complexity in
+the generation of the polygonal mesh.
+
+Okay, I think I was wrong about the 16 shapes. It looks like the ones that they
+show, it is treated like the points that are selected, can be easily inverted,
+as there is a certain symetry present there. Then if you account for rotational
+and mirroring symetry, I think that it makes sense that there are eventually
+just the fewremaining shapes.
+
+The next question that we then have to answer is how we want to then do this
+tiling work. We can either codify the 15 shapes, and then figure out the
+rotational and mirroring symetryies, get the shape, and then unreverse the
+mirroring and rotations. Or we can try and generate an algorithm which can take
+any case and generate the required mesh for that.
+
+So lets dig a little deeper and see if we can find out any simplifiable criteria
+and do that work. I think it should be easy enough to generate actually. We need
+to find the connected points. Every solution is made of some set of these
+connected points. For 1, 2 and 3 points, there is only one possible connection
+method (and their mirrors and rotations). For 4 points, there are 4 different
+possiblities. It is also possible that one cube has multiple sets of connected
+points, but they can all be treated separately.
+
+Next thing we would need to do is find a bounding box of this set. I now need to
+go and find out how we can do that one. That might also become necessary when we
+are doing the vine growth.
+
+We can probably start off without it though. Okay, Now that I am thinking about
+this, it seems like there might be an even easier way to do the marched cubes
+work. Do it fully algorithmically and just use the known solutions to check
+whether what we have is correct or not. Basically, what we need is to for each
+point, chech whether it has a neighbour, and if it doesn't then place a vertex
+there. The final tessalation of those vertices might be a bit of an annoyance,
+but I think it should be okay to do... Also normal calculation might be hard
+with this. Though if we know the vertices, then normal calculation should come
+from that for free.

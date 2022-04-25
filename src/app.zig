@@ -20,6 +20,7 @@ const SingleInput = helpers.SingleInput;
 const MouseState = helpers.MouseState;
 const EditableText = helpers.EditableText;
 const Mesh = helpers.Mesh;
+const MarchedCube = helpers.MarchedCube;
 const TYPING_BUFFER_SIZE = 16;
 const glf = c.GLfloat;
 
@@ -106,7 +107,7 @@ pub const App = struct {
         return Self{
             .allocator = allocator,
             .arena = arena,
-            .cube = Mesh.unit_cube(allocator),
+            .cube = Mesh.init(allocator),
             .vines = Vines.init(allocator, arena),
             .cam3d = Camera3D.new(),
         };
@@ -114,7 +115,7 @@ pub const App = struct {
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
-        if (true) {
+        if (false) {
             // cube
             {
                 const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.3 };
@@ -129,7 +130,7 @@ pub const App = struct {
                 self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, false);
             }
         }
-        if (false) {
+        if (true) {
             // {
             //     const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
             //     const dir = Vector3_gl{ .z = -1.0, .y = -0.1 };
@@ -143,8 +144,19 @@ pub const App = struct {
                 const axis = Vector3_gl{ .x = 1.0 };
                 self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, true);
             }
+            self.cube.generate_from_sdf(sdf_default_sphere, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 40.0, self.arena);
         }
         self.vines.regenerate_mesh(0.5);
+        if (false) {
+            // Marching Cubes test
+            var m = MarchedCube.init();
+            const verts = [8]bool{
+                // true, false, false, false, false, false, false, false,
+                true, false, false, false, false, true, false, true,
+            };
+            m.generate_mesh(undefined, .{}, verts, &self.cube, self.arena);
+            self.quit = true;
+        }
     }
 
     pub fn deinit(self: *Self) void {

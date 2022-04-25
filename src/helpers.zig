@@ -1029,6 +1029,23 @@ pub const Mesh = struct {
         self.vertices.appendSlice(mesh.vertices.items) catch unreachable;
     }
 
+    /// Use marching cubes algorithm to generate a mesh from an sdf function
+    pub fn generate_from_sdf(self: *Self, sdf: fn (Vector3_gl) glf, center: Vector3_gl, bounds: Vector3_gl, cube_size: glf, arena: std.mem.Allocator) void {
+        std.debug.print("Starting marching cubes\n", .{});
+        // We use the edge of bounds for center of cube, not edge of cube...
+        var x = center.x - bounds.x;
+        while (x < center.x + bounds.x) : (x += cube_size) {
+            var y = center.y - bounds.y;
+            while (y < center.y + bounds.y) : (y += cube_size) {
+                var z = center.z - bounds.z;
+                while (z < center.z + bounds.z) : (z += cube_size) {
+                    var marched_cube = MarchedCube.init();
+                    marched_cube.march_cube(.{ .x = x, .y = y, .z = z }, cube_size / 2.0, sdf, self, arena);
+                }
+            }
+        }
+    }
+
     /// returns the mesh of a cube of side 1 with center at origin.
     pub fn unit_cube(allocator: std.mem.Allocator) Self {
         var self = Mesh.init(allocator);
@@ -1095,4 +1112,186 @@ pub const Mesh = struct {
 // checks if a value is very close to 0
 pub fn sdf_check(val: glf) bool {
     return (val >= -0.01 and val <= 0.01);
+}
+
+pub const MarchedCube = struct {
+    const Self = @This();
+    // TODO (25 Apr 2022 sam): Update this to xyz order
+    /// verts are as follows (px is posx, nz is neg z etc.)
+    /// 0 - nx ny nz
+    /// 1 - nx py nz
+    /// 2 - px py nz
+    /// 3 - px ny nz
+    /// 4 - nx ny pz
+    /// 5 - nx py pz
+    /// 6 - px py pz
+    /// 7 - px ny pz
+    flipped: bool = false,
+
+    pub fn init() Self {
+        return Self{};
+    }
+
+    fn neighbors(self: *Self, index: usize) [3]usize {
+        _ = self;
+        // TODO (25 Apr 2022 sam): Update this to xyz order
+        // the neighbours are all arranged in y, x, z order
+        return switch (index) {
+            0 => .{ 1, 3, 4 },
+            1 => .{ 0, 2, 5 },
+            2 => .{ 3, 1, 6 },
+            3 => .{ 2, 0, 7 },
+            4 => .{ 5, 7, 0 },
+            5 => .{ 4, 6, 1 },
+            6 => .{ 7, 5, 2 },
+            7 => .{ 6, 4, 3 },
+            else => unreachable,
+        };
+    }
+
+    fn flip_verts(self: *Self, verts: *[8]bool) void {
+        for (verts.*) |*vert| vert.* = !vert.*;
+        self.flipped = !self.flipped;
+    }
+
+    fn num_trues(self: *Self, verts: [8]bool) usize {
+        _ = self;
+        var trues: usize = 0;
+        for (verts) |vert| {
+            if (vert) trues += 1;
+        }
+        return trues;
+    }
+
+    pub fn march_cube(self: *Self, center: Vector3_gl, size: glf, sdf: fn (Vector3_gl) glf, mesh: *Mesh, arena: std.mem.Allocator) void {
+        // size is the half size of the cube...
+        const pos = [8]Vector3_gl{
+            center.added(.{ .x = -size, .y = -size, .z = -size }),
+            center.added(.{ .x = -size, .y = size, .z = -size }),
+            center.added(.{ .x = size, .y = size, .z = -size }),
+            center.added(.{ .x = size, .y = -size, .z = -size }),
+            center.added(.{ .x = -size, .y = -size, .z = size }),
+            center.added(.{ .x = -size, .y = size, .z = size }),
+            center.added(.{ .x = size, .y = size, .z = size }),
+            center.added(.{ .x = size, .y = -size, .z = size }),
+        };
+        var verts: [8]bool = undefined;
+        for (pos) |p, i| verts[i] = sdf(p) < 0;
+        if (self.num_trues(verts) > 4) self.flip_verts(&verts);
+        self.generate_mesh(pos, center, verts, mesh, arena);
+    }
+
+    pub fn generate_mesh(self: *Self, pos: [8]Vector3_gl, center: Vector3_gl, verts: [8]bool, mesh: *Mesh, arena: std.mem.Allocator) void {
+        _ = pos;
+        _ = center;
+        _ = verts;
+        _ = mesh;
+        _ = arena;
+        var handled = [8]bool{ false, false, false, false, false, false, false, false };
+        // create all the sets. sets are multiple points that are connected to
+        // each other and inside the field.
+        var sets = std.ArrayList(std.ArrayList(usize)).init(arena);
+        for (sets.items) |*set| set.deinit();
+        defer sets.deinit();
+        for (verts) |vert, i| {
+            if (!vert) continue;
+            if (handled[i]) continue;
+            // indices is all the vertices that are in the current set
+            var indices = std.AutoHashMap(usize, void).init(arena);
+            defer indices.deinit();
+            // vertices are all the mesh vertices that are generated as a part
+            // of this set.
+            var vertices = std.ArrayList(MeshVertex).init(arena);
+            defer vertices.deinit();
+            // stack is all the indices that are going to be checked in the
+            // current set generation;
+            var stack = std.ArrayList(usize).init(arena);
+            defer stack.deinit();
+            stack.append(i) catch unreachable;
+            while (stack.items.len > 0) {
+                const current_index = stack.pop();
+                if (indices.contains(current_index)) {
+                    // this has already been handled as a part of this set
+                    continue;
+                }
+                const v: void = undefined;
+                indices.put(current_index, v) catch unreachable;
+                handled[current_index] = true;
+                for (self.neighbors(current_index)) |j| {
+                    if (verts[j]) {
+                        // part of set...
+                        if (handled[j]) continue;
+                        stack.append(j) catch unreachable;
+                    }
+                }
+            }
+            var set = std.ArrayList(usize).init(arena);
+            var keys = indices.keyIterator();
+            while (keys.next()) |key| set.append(key.*) catch unreachable;
+            std.debug.assert(set.items.len > 0); // set should not be empty.
+            sets.append(set) catch unreachable;
+        }
+        if (false) {
+            // debug print sets...
+            std.debug.print("Marched Cube contains {d} sets:\n", .{sets.items.len});
+            for (sets.items) |set, i| {
+                std.debug.print("  Set {d} -> ", .{i});
+                for (set.items) |k| std.debug.print("{d} ", .{k});
+                std.debug.print("\n", .{});
+            }
+        }
+        for (sets.items) |set| {
+            if (set.items.len == 5) std.debug.print("verts = {any}\n", .{verts});
+            self.create_triangles(set.items, pos, center, mesh, arena);
+        }
+    }
+
+    /// generates mesh based on the number of points.
+    fn create_triangles(self: *Self, set: []usize, pos: [8]Vector3_gl, center: Vector3_gl, mesh: *Mesh, arena: std.mem.Allocator) void {
+        // https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/MarchingCubes.svg/350px-MarchingCubes.svg.png
+        std.debug.assert(set.len > 0);
+        std.debug.assert(set.len < 5);
+        std.debug.print("{d}", .{set.len});
+        if (set.len == 1) {
+            // corner mesh; case 1
+            const idx = set[0];
+            var normal = pos[idx].subtracted(center).normalized();
+            if (self.flipped) normal = normal.negated();
+            for (self.neighbors(idx)) |j| {
+                const position = pos[idx].lerped(pos[j], 0.5);
+                const ver = MeshVertex{ .position = position, .normal = normal };
+                mesh.vertices.append(ver) catch unreachable;
+            }
+        }
+        if (set.len == 2) {
+            // edge mesh; case 2
+            var verts = std.ArrayList(Vector3_gl).init(arena);
+            defer verts.deinit();
+            for (set) |idx| {
+                for (self.neighbors(idx)) |j| {
+                    if (contains(set, j)) continue;
+                    verts.append(pos[idx].lerped(pos[j], 0.5)) catch
+                        unreachable;
+                }
+            }
+            std.debug.assert(verts.items.len == 4);
+            var normal = verts.items[0].lerped(verts.items[1], 0.5).subtracted(pos[set[0]]).normalized();
+            if (self.flipped) normal = normal.negated();
+            // since the neighbours are in a consistent order, it means that
+            // v[0] and v[3] are diagonal to each other.
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+        }
+    }
+};
+
+pub fn contains(list: []usize, x: usize) bool {
+    for (list) |l| {
+        if (l == x) return true;
+    }
+    return false;
 }

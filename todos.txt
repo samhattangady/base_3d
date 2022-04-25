@@ -6,6 +6,7 @@
     [ ] Limit max thickness of vine
 [ ] Add branching
 [ ] Figure out how to end vine growth
+[ ] See if we can use gradient of the sdf field to do vine growth.
 
 ---
 
