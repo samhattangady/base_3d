@@ -1048,6 +1048,13 @@ pub const Mesh = struct {
         }
     }
 
+    /// aligns all the normals in the mesh to match the sdf gradient.
+    pub fn align_normals(self: *Self, sdf: fn (Vector3_gl) glf) void {
+        for (self.vertices.items) |*vtx| {
+            vtx.normal = sdf_gradient(vtx.position, sdf);
+        }
+    }
+
     /// returns the mesh of a cube of side 1 with center at origin.
     pub fn unit_cube(allocator: std.mem.Allocator) Self {
         var self = Mesh.init(allocator);
@@ -1184,6 +1191,8 @@ pub const MarchedCube = struct {
     }
 
     pub fn generate_mesh(self: *Self, pos: [8]Vector3_gl, center: Vector3_gl, verts: [8]bool, mesh: *Mesh, arena: std.mem.Allocator) void {
+        // TODO (26 Apr 2022 sam): Cache all 256 possibilities for the sets, and then
+        // use that in further marching.
         var handled = [8]bool{ false, false, false, false, false, false, false, false };
         // create all the sets. sets are multiple points that are connected to
         // each other and inside the field.
@@ -1424,7 +1433,7 @@ pub const MarchedCube = struct {
                 }
             }
             if (closed) |c_idx| {
-                // if (DEBUG_MARCHING_CUBES) return 0;
+                if (DEBUG_MARCHING_CUBES) return 0;
                 // case 8 - hexagon.
                 var vtx: Vector3_gl = .{ .x = 999, .y = 999, .z = 999 };
                 var avgx: glf = 0.0;
@@ -1446,6 +1455,7 @@ pub const MarchedCube = struct {
                 // we find the mid vert, and since we have the normal, we can rotate
                 // to find the verts that we need.
                 var verts = std.ArrayList(Vector3_gl).init(arena);
+                defer verts.deinit();
                 var ang: usize = 0;
                 if (Vector3_gl.distance(vtx, mid) > 0.2) {
                     std.debug.print("vtx\n", .{});
@@ -1472,10 +1482,105 @@ pub const MarchedCube = struct {
 
                 return 4;
             }
-            std.debug.print("marched cube is case case 9 or case 14. not yet implemented\n", .{});
-            return 0;
+            // case 9 and 14 are mirrored images. we treat them the same
+            // here, there is a chain of 4 vertices connected to each other.
+            // we take them in order and name them p0 - p3
+            // if (DEBUG_MARCHING_CUBES) return 0;
+            var ps: [4]usize = .{ 42, 42, 42, 42 };
+            for (set) |idx| {
+                var count: usize = 0;
+                for (self.neighbors(idx)) |j| {
+                    if (contains(set, j)) continue;
+                    count += 1;
+                }
+                std.debug.print("count=={d} {d}\n", .{ count, idx });
+                if (count == 2) {
+                    if (ps[0] == 42) {
+                        ps[0] = idx;
+                    } else {
+                        ps[3] = idx;
+                    }
+                }
+            }
+            std.debug.assert(ps[0] != 42);
+            std.debug.assert(ps[3] != 42);
+            std.debug.assert(ps[0] != ps[3]);
+            for (self.neighbors(ps[0])) |j| {
+                if (contains(set, j)) ps[1] = j;
+            }
+            for (self.neighbors(ps[3])) |j| {
+                if (contains(set, j)) ps[2] = j;
+            }
+            std.debug.assert(ps[1] != 42);
+            std.debug.assert(ps[2] != 42);
+            var raw_verts = std.ArrayList(Vector3_gl).init(arena);
+            defer raw_verts.deinit();
+            for (ps) |idx| {
+                for (self.neighbors(idx)) |j| {
+                    if (contains(set, j)) continue;
+                    raw_verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
+                }
+            }
+            std.debug.assert(raw_verts.items.len == 6);
+            // this is all done mostly by looking at wikipedia and figuring out the
+            // triangles. needs more rigorous testing. Note that v0 and v1 are
+            // adjacent to one edge. v2 and v3 are middle edges, and v4,v5 are
+            // adjacent to the other edge
+            // triangles are - 012, 452, 412, 413
+            // however we don't know the nature of 01 and 45. But we can calculate
+            // based on distance to 1 and 2. Se we say that 4 and 1 are closer to 3
+            // TODO (26 Apr 2022 sam): Fix Normals.
+            var verts = std.ArrayList(Vector3_gl).init(arena);
+            defer verts.deinit();
+            var vi: usize = 0;
+            while (vi < 6) : (vi += 1) verts.append(.{}) catch unreachable;
+            verts.items[2] = raw_verts.items[2];
+            verts.items[3] = raw_verts.items[3];
+            if (Vector3_gl.distance_sqr(raw_verts.items[3], raw_verts.items[1]) <
+                Vector3_gl.distance_sqr(raw_verts.items[3], raw_verts.items[0]))
+            {
+                verts.items[0] = raw_verts.items[0];
+                verts.items[1] = raw_verts.items[1];
+            } else {
+                verts.items[0] = raw_verts.items[1];
+                verts.items[1] = raw_verts.items[0];
+            }
+            if (Vector3_gl.distance_sqr(raw_verts.items[3], raw_verts.items[4]) <
+                Vector3_gl.distance_sqr(raw_verts.items[3], raw_verts.items[5]))
+            {
+                verts.items[4] = raw_verts.items[4];
+                verts.items[5] = raw_verts.items[5];
+            } else {
+                verts.items[4] = raw_verts.items[5];
+                verts.items[5] = raw_verts.items[4];
+            }
+            {
+                const normal = verts.items[0].subtracted(verts.items[1]).crossed(verts.items[0].subtracted(verts.items[2])).normalized();
+                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            }
+            {
+                const normal = verts.items[4].subtracted(verts.items[5]).crossed(verts.items[4].subtracted(verts.items[2])).normalized();
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            }
+            {
+                const normal = verts.items[4].subtracted(verts.items[1]).crossed(verts.items[4].subtracted(verts.items[2])).normalized();
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            }
+            {
+                const normal = verts.items[4].subtracted(verts.items[1]).crossed(verts.items[4].subtracted(verts.items[3])).normalized();
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+            }
+            return 4;
         }
-        return 0;
+        unreachable;
     }
 };
 
@@ -1492,4 +1597,18 @@ pub fn num_coords_equal(v1: Vector3_gl, v2: Vector3_gl) usize {
     if (v1.y == v2.y) count += 1;
     if (v1.z == v2.z) count += 1;
     return count;
+}
+
+pub fn sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
+
+    // We calculate the normal by finding the gradient of the field at the
+    // point that we are interested in. We can find the gradient by getting
+    // the difference in field at that point and a point slighttly away from it.
+    const h: glf = 0.0001;
+    const sdfp = -sdf(point);
+    return Vector3_gl.normalize(.{
+        .x = sdfp + sdf(point.added(.{ .x = h })),
+        .y = sdfp + sdf(point.added(.{ .y = h })),
+        .z = sdfp + sdf(point.added(.{ .z = h })),
+    });
 }
