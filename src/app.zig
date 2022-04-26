@@ -144,7 +144,24 @@ pub const App = struct {
                 const axis = Vector3_gl{ .x = 1.0 };
                 self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, true);
             }
-            self.cube.generate_from_sdf(sdf_default_sphere, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 40.0, self.arena);
+            self.cube.generate_from_sdf(sdf_default_sphere, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 90.0, self.arena);
+            // if (false) {
+            //     const verts = [8]bool{
+            //         true, true, true, false, false, false, false, false,
+            //     };
+            //     const pos = [8]Vector3_gl{
+            //         .{ .x = -0.5, .y = -0.5, .z = -0.5 },
+            //         .{ .x = -0.5, .y = 0.5, .z = -0.5 },
+            //         .{ .x = 0.5, .y = 0.5, .z = -0.5 },
+            //         .{ .x = 0.5, .y = -0.5, .z = -0.5 },
+            //         .{ .x = -0.5, .y = -0.5, .z = 0.5 },
+            //         .{ .x = -0.5, .y = 0.5, .z = 0.5 },
+            //         .{ .x = 0.5, .y = 0.5, .z = 0.5 },
+            //         .{ .x = 0.5, .y = -0.5, .z = 0.5 },
+            //     };
+            //     var marched_cube = MarchedCube.init();
+            //     marched_cube.generate_mesh(pos, .{}, verts, &self.cube, self.arena);
+            // }
         }
         self.vines.regenerate_mesh(0.5);
         if (false) {

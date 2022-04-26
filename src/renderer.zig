@@ -238,7 +238,6 @@ pub const Renderer = struct {
         c.glUseProgram(self.base_shader.program);
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glEnable(c.GL_BLEND);
-        c.glDisable(c.GL_CULL_FACE);
         c.glEnable(c.GL_DEPTH_TEST);
         c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
         c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "tex"), 0);

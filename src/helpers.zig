@@ -7,6 +7,8 @@ pub const HALF_PI = PI / 2.0;
 pub const TWO_PI = PI * 2.0;
 const glf = c.GLfloat;
 
+const DEBUG_MARCHING_CUBES = false;
+
 pub const Vector2 = struct {
     const Self = @This();
     x: f32 = 0.0,
@@ -1182,11 +1184,6 @@ pub const MarchedCube = struct {
     }
 
     pub fn generate_mesh(self: *Self, pos: [8]Vector3_gl, center: Vector3_gl, verts: [8]bool, mesh: *Mesh, arena: std.mem.Allocator) void {
-        _ = pos;
-        _ = center;
-        _ = verts;
-        _ = mesh;
-        _ = arena;
         var handled = [8]bool{ false, false, false, false, false, false, false, false };
         // create all the sets. sets are multiple points that are connected to
         // each other and inside the field.
@@ -1242,28 +1239,32 @@ pub const MarchedCube = struct {
         }
         for (sets.items) |set| {
             if (set.items.len == 5) std.debug.print("verts = {any}\n", .{verts});
-            self.create_triangles(set.items, pos, center, mesh, arena);
+            const created = self.create_triangles(set.items, pos, center, mesh, arena);
+            _ = created;
+            // if (created == 0) std.debug.print("{any} was not rendered\n", .{set});
         }
     }
 
     /// generates mesh based on the number of points.
-    fn create_triangles(self: *Self, set: []usize, pos: [8]Vector3_gl, center: Vector3_gl, mesh: *Mesh, arena: std.mem.Allocator) void {
+    fn create_triangles(self: *Self, set: []usize, pos: [8]Vector3_gl, center: Vector3_gl, mesh: *Mesh, arena: std.mem.Allocator) u8 {
         // https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/MarchingCubes.svg/350px-MarchingCubes.svg.png
         std.debug.assert(set.len > 0);
         std.debug.assert(set.len < 5);
-        std.debug.print("{d}", .{set.len});
         if (set.len == 1) {
+            if (DEBUG_MARCHING_CUBES) return 0;
             // corner mesh; case 1
             const idx = set[0];
-            var normal = pos[idx].subtracted(center).normalized();
+            var normal = pos[idx].subtracted(center).negated().normalized();
             if (self.flipped) normal = normal.negated();
             for (self.neighbors(idx)) |j| {
                 const position = pos[idx].lerped(pos[j], 0.5);
                 const ver = MeshVertex{ .position = position, .normal = normal };
                 mesh.vertices.append(ver) catch unreachable;
             }
+            return 1;
         }
         if (set.len == 2) {
+            if (DEBUG_MARCHING_CUBES) return 0;
             // edge mesh; case 2
             var verts = std.ArrayList(Vector3_gl).init(arena);
             defer verts.deinit();
@@ -1285,7 +1286,196 @@ pub const MarchedCube = struct {
             mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
             mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
             mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            return 2;
         }
+        if (set.len == 3) {
+            if (DEBUG_MARCHING_CUBES) return 0;
+            // case 4
+            // we need to find the point with 2 neighbours first.
+            var middle: usize = undefined;
+            var open: usize = undefined;
+            for (set) |idx, i| {
+                var count: u8 = 0;
+                for (self.neighbors(idx)) |j, ji| {
+                    if (contains(set, j)) {
+                        count += 1;
+                    } else {
+                        open = ji;
+                    }
+                }
+                if (count == 2) {
+                    middle = i;
+                    break;
+                } else {}
+            }
+            std.debug.assert(open < 3);
+            std.debug.assert(middle < 3);
+            // create set with middle at index 0
+            const set_o: [3]usize = switch (middle) {
+                0 => .{ set[0], set[1], set[2] },
+                1 => .{ set[1], set[2], set[0] },
+                2 => .{ set[2], set[0], set[1] },
+                else => unreachable,
+            };
+            // create a triangle with all the verts on top side
+            for (set_o) |idx| {
+                const v = pos[idx].lerped(pos[self.neighbors(idx)[open]], 0.5);
+                var n = v.subtracted(pos[idx]).normalized();
+                if (self.flipped) n = n.negated();
+                mesh.vertices.append(.{ .position = v, .normal = n }) catch unreachable;
+            }
+            // similar to set.len == 2, we create a surface using set_o[1..]
+            // first we take the open side, v[0] and v[1] are one side
+            // and let v[3] be opposite to v[0]
+            var verts = std.ArrayList(Vector3_gl).init(arena);
+            defer verts.deinit();
+            for (set_o[1..]) |idx| {
+                verts.append(pos[idx].lerped(pos[self.neighbors(idx)[open]], 0.5)) catch unreachable;
+            }
+            for (set_o[1..]) |idx| {
+                for (self.neighbors(idx)) |j, ji| {
+                    if (contains(set, j)) continue;
+                    if (ji == open) continue;
+                    verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
+                }
+            }
+            std.debug.assert(verts.items.len == 4);
+            var normal = center.subtracted(pos[set[middle]]).normalized();
+            if (self.flipped) normal = normal.negated();
+            // v[0] and v[3] are diagonal to each other.
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            return 3;
+        }
+        if (set.len == 4) {
+            // set.len == 4 has 4 cases.
+            // first we can calculate the number of open neighbours.
+            var open_neighbors: usize = 0;
+            for (set) |idx| {
+                for (self.neighbors(idx)) |j| {
+                    if (contains(set, j)) continue;
+                    open_neighbors += 1;
+                }
+            }
+            // if open_neighbors is 4, then we are on case 5
+            if (open_neighbors == 4) {
+                if (DEBUG_MARCHING_CUBES) return 0;
+                var verts = std.ArrayList(Vector3_gl).init(arena);
+                defer verts.deinit();
+                for (set) |idx| {
+                    for (self.neighbors(idx)) |j| {
+                        if (contains(set, j)) continue;
+                        verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
+                    }
+                }
+                const normal = verts.items[0].subtracted(pos[set[0]]).normalized();
+                // we need to figure out the order of the verts. so we pick any
+                // two verts at random, lets say 0 and 3, and we check their coords.
+                // if two are equal, then they are not opposite. if one is equal
+                // then they are opposite. Note that this assumes that cubes are
+                // axis aligned
+                var p0: Vector3_gl = undefined;
+                var p1: Vector3_gl = undefined;
+                var p2: Vector3_gl = undefined;
+                var p3: Vector3_gl = undefined;
+                if (num_coords_equal(verts.items[0], verts.items[3]) == 1) {
+                    p0 = verts.items[0];
+                    p1 = verts.items[1];
+                    p2 = verts.items[2];
+                    p3 = verts.items[3];
+                } else if (num_coords_equal(verts.items[0], verts.items[2]) == 1) {
+                    p0 = verts.items[0];
+                    p1 = verts.items[1];
+                    p2 = verts.items[3];
+                    p3 = verts.items[2];
+                } else if (num_coords_equal(verts.items[0], verts.items[1]) == 1) {
+                    p0 = verts.items[0];
+                    p1 = verts.items[2];
+                    p2 = verts.items[3];
+                    p3 = verts.items[1];
+                } else {
+                    unreachable;
+                }
+                // p0 and p3 are diagonally opposite
+                mesh.vertices.append(.{ .position = p0, .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = p1, .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = p3, .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = p0, .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = p3, .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = p2, .normal = normal }) catch unreachable;
+                return 4;
+            }
+            std.debug.assert(open_neighbors == 6);
+            // if one vertex has 0 open neighbors, then we are on case 8
+            var closed: ?usize = null;
+            for (set) |idx| {
+                var open: usize = 0;
+                for (self.neighbors(idx)) |j| {
+                    if (contains(set, j)) continue;
+                    open += 1;
+                }
+                if (open == 0) {
+                    closed = idx;
+                    break;
+                }
+            }
+            if (closed) |c_idx| {
+                // if (DEBUG_MARCHING_CUBES) return 0;
+                // case 8 - hexagon.
+                var vtx: Vector3_gl = .{ .x = 999, .y = 999, .z = 999 };
+                var avgx: glf = 0.0;
+                var avgy: glf = 0.0;
+                var avgz: glf = 0.0;
+                for (set) |idx| {
+                    for (self.neighbors(idx)) |j| {
+                        if (contains(set, j)) continue;
+                        const vert = pos[idx].lerped(pos[j], 0.5);
+                        if (vtx.x == 999) vtx = vert;
+                        avgx += vert.x / 6.0;
+                        avgy += vert.y / 6.0;
+                        avgz += vert.z / 6.0;
+                    }
+                }
+                const mid = Vector3_gl{ .x = avgx, .y = avgy, .z = avgz };
+                const corner = pos[c_idx];
+                const normal = mid.subtracted(corner).normalized();
+                // we find the mid vert, and since we have the normal, we can rotate
+                // to find the verts that we need.
+                var verts = std.ArrayList(Vector3_gl).init(arena);
+                var ang: usize = 0;
+                if (Vector3_gl.distance(vtx, mid) > 0.2) {
+                    std.debug.print("vtx\n", .{});
+                }
+                while (ang < 6) : (ang += 1) {
+                    const p = vtx.rotated_about_point_axis(mid, normal, @intToFloat(glf, ang) * std.math.pi / -3.0);
+                    if (Vector3_gl.distance(p, mid) > 0.2) {
+                        std.debug.print("{d}: mid = {d},{d},{d}\nvtx= {d},{d},{d}\n", .{ ang, mid.x, mid.y, mid.z, p.x, p.y, p.z });
+                    }
+                    verts.append(p) catch unreachable;
+                }
+                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+
+                return 4;
+            }
+            std.debug.print("marched cube is case case 9 or case 14. not yet implemented\n", .{});
+            return 0;
+        }
+        return 0;
     }
 };
 
@@ -1294,4 +1484,12 @@ pub fn contains(list: []usize, x: usize) bool {
         if (l == x) return true;
     }
     return false;
+}
+
+pub fn num_coords_equal(v1: Vector3_gl, v2: Vector3_gl) usize {
+    var count: usize = 0;
+    if (v1.x == v2.x) count += 1;
+    if (v1.y == v2.y) count += 1;
+    if (v1.z == v2.z) count += 1;
+    return count;
 }
