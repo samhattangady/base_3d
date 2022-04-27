@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn build(b: *std.build.Builder) void {
     // Standard target options allows the person running `zig build` to choose
@@ -10,7 +11,7 @@ pub fn build(b: *std.build.Builder) void {
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
-    const windows_build = if (b.option(bool, "windows", "Build for windows")) |w| w else true;
+    const windows_build = if (b.option(bool, "windows", "Build for windows")) |w| w else builtin.os.tag == .windows;
 
     const exe = b.addExecutable("basic_3d", "src/main.zig");
     exe.setTarget(target);
