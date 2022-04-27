@@ -235,6 +235,7 @@ pub const Renderer = struct {
     }
 
     fn draw_mesh(self: *Self, app: *const App, mesh: *const Mesh) void {
+        if (mesh.vertices.items.len == 0) return;
         c.glUseProgram(self.base_shader.program);
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glEnable(c.GL_BLEND);

@@ -143,8 +143,10 @@ pub const App = struct {
             //     const axis = Vector3_gl{ .x = 1.0 };
             //     self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, true);
             // }
-            self.cube.generate_from_sdf(sdf_default_sphere, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 90.0, self.arena);
-            self.cube.align_normals(sdf_default_sphere);
+            if (false) {
+                self.cube.generate_from_sdf(sdf_default_sphere, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 90.0, self.arena);
+                self.cube.align_normals(sdf_default_sphere);
+            }
             if (false) {
                 const verts = [8]bool{
                     //true, true, true, false, false, false, false, false,
