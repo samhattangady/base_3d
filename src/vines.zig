@@ -246,7 +246,9 @@ pub const Vines = struct {
 
     pub fn get_next_pos(self: *Self, point: Vector3_gl, direction: *Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, ccw: bool) ?Vector3_gl {
         _ = self;
-        const end = point.added(direction.*);
+        _ = ccw;
+        _ = axis;
+        const end = point.added(direction.*.scaled(0.2));
         const dist = sdf_fn(end);
         // the vine is still growing along the sdf
         if (helpers.sdf_check(dist)) return end;
@@ -267,16 +269,8 @@ pub const Vines = struct {
             return pos;
         } else {
             // we left off at the edge last time, then we will have to turn and check now
-            // TODO (22 Apr 2022 sam): Use some kind of binary search to make this faster.
-            var count: usize = 0;
-            var dir = direction.*.scaled(0.1);
-            var pos = point.added(dir);
-            const mult: glf = if (ccw) 1.0 else -1.0;
-            while (!helpers.sdf_check(sdf_fn(pos))) {
-                pos = pos.rotated_about_point_axis(point, axis, mult * helpers.TWO_PI / 500.0);
-                count += 1;
-                if (count > 500) return null; // could not turn and find next point
-            }
+            const gradient = helpers.sdf_gradient(end, sdf_fn);
+            const pos = end.added(gradient.scaled(-dist));
             direction.* = pos.subtracted(point).normalized();
             return pos;
         }

@@ -12,6 +12,7 @@ const Vines = vines_lib.Vines;
 
 const helpers = @import("helpers.zig");
 const Vector2 = helpers.Vector2;
+const Vector2_gl = helpers.Vector2_gl;
 const Vector3_gl = helpers.Vector3_gl;
 const Matrix3_gl = helpers.Matrix3_gl;
 const Camera2D = helpers.Camera2D;
@@ -76,6 +77,14 @@ pub const InputState = struct {
     }
 };
 
+pub fn smooth_sub(d1: glf, d2: glf, k: glf) glf {
+    // float opSmoothSubtraction( float d1, float d2, float k ) {
+    // float h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );
+    // return mix( d2, -d1, h ) + k*h*(1.0-h); }
+    const h = std.math.clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
+    return helpers.lerpf(d2, -d1, h) + k * h * (1.0 - h);
+}
+
 pub fn sdf_default_cube(point: Vector3_gl) glf {
     const size = Vector3_gl{ .x = 0.5, .y = 0.5, .z = 0.5 };
     // https://iquilezles.org/articles/distfunctions/
@@ -87,6 +96,24 @@ pub fn sdf_default_cube(point: Vector3_gl) glf {
 
 pub fn sdf_default_sphere(point: Vector3_gl) glf {
     return point.length() - 0.5;
+}
+
+pub fn sdf_cylinder(point: Vector3_gl, height: glf, radius: glf) glf {
+    // float sdCappedCylinder( vec3 p, float h, float r )
+    // {
+    //   vec2 d = abs(vec2(length(p.xz),p.y)) - vec2(h,r); <- had to change this
+    //   return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+    // }
+    const temp = Vector2_gl{ .x = Vector2_gl.length(.{ .x = point.x, .y = point.z }), .y = point.y };
+    const d = temp.absed().subtracted(.{ .x = radius, .y = height });
+    return min(max(d.x, d.y), 0.0) + d.maxed(0.0).lengthed();
+}
+
+pub fn my_sdf(point: Vector3_gl) glf {
+    var d = sdf_default_cube(point);
+    var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .x = 1 }, std.math.pi / 2.0), 3.13, 0.125);
+    if (false) return smooth_sub(d2, d, 0.1);
+    return d;
 }
 
 pub const App = struct {
@@ -115,25 +142,26 @@ pub const App = struct {
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
-        if (false) {
+        self.cube.generate_from_sdf(my_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
+        if (true) {
             // cube
             {
                 const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.3 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -0.2 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -1.2 };
                 const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, true);
+                self.vines.grow(point, dir.normalized(), my_sdf, axis, true);
             }
-            {
+            if (false) {
                 const point = Vector3_gl{ .x = -0.5, .y = 0.5, .z = -0.3 };
                 const dir = Vector3_gl{ .z = 1.0, .y = -0.1 };
                 const axis = Vector3_gl{ .y = 1.0 };
                 self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, false);
             }
         }
-        if (true) {
+        if (false) {
             {
                 const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
-                const dir = Vector3_gl{ .z = -1.0, .y = -0.1 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -0.2 };
                 const axis = Vector3_gl{ .y = 1.0 };
                 self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, false);
             }
@@ -176,7 +204,19 @@ pub const App = struct {
                 marched_cube.generate_mesh(pos, .{}, verts, &self.cube, self.arena);
             }
         }
-        self.vines.regenerate_mesh(0.5);
+        if (true) {
+            // cubes at vine points
+            for (self.vines.vines.items) |vine| {
+                for (vine.points.items) |point| {
+                    var cube = Mesh.unit_cube(self.arena);
+                    defer cube.deinit();
+                    cube.set_position(point.position);
+                    cube.set_scalef(0.1);
+                    self.cube.append_mesh(&cube);
+                }
+            }
+        }
+        self.vines.regenerate_mesh(0.95);
         if (false) {
             // Marching Cubes test
             var m = MarchedCube.init();

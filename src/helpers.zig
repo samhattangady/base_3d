@@ -266,6 +266,10 @@ pub const Vector2_gl = extern struct {
         };
     }
 
+    pub fn subtracted(v1: *const Self, v2: Self) Self {
+        return Self.subtract(v1.*, v2);
+    }
+
     pub fn distance(v1: Self, v2: Self) glf {
         return @sqrt(((v2.x - v1.x) * (v2.x - v1.x)) + ((v2.y - v1.y) * (v2.y - v1.y)));
     }
@@ -280,6 +284,10 @@ pub const Vector2_gl = extern struct {
 
     pub fn length(v1: Self) glf {
         return @sqrt((v1.x * v1.x) + (v1.y * v1.y));
+    }
+
+    pub fn lengthed(v1: *const Self) glf {
+        return Self.length(v1.*);
     }
 
     pub fn length_sqr(v1: Self) glf {
@@ -323,6 +331,20 @@ pub const Vector2_gl = extern struct {
         return Vector2_gl{
             .x = v1.x / l,
             .y = v1.y / l,
+        };
+    }
+
+    pub fn absed(v: *const Self) Self {
+        return .{
+            .x = @fabs(v.x),
+            .y = @fabs(v.y),
+        };
+    }
+
+    pub fn maxed(v: *const Self, val: c.GLfloat) Self {
+        return .{
+            .x = std.math.max(v.x, val),
+            .y = std.math.max(v.y, val),
         };
     }
 
@@ -959,7 +981,7 @@ pub const Camera3D = struct {
     aspect_ratio: glf = (16.0 / 9.0),
 
     pub fn new() Self {
-        const pos = Vector3_gl{ .z = -5.0, .x = 1.0, .y = -0.7 };
+        const pos = Vector3_gl{ .z = 5.0, .x = -1.0, .y = -0.7 };
         return .{
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
