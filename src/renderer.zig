@@ -221,7 +221,9 @@ pub const Renderer = struct {
         self.ticks = ticks;
         c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
-        self.draw_mesh(app, &app.cube);
+        if (app.debug == 0) {
+            self.draw_mesh(app, &app.cube);
+        }
         self.draw_mesh(app, &app.vines.mesh);
         self.draw_buffers();
         c.SDL_GL_SwapWindow(self.window);

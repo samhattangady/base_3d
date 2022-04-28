@@ -1142,7 +1142,7 @@ pub const Mesh = struct {
 
 // checks if a value is very close to 0
 pub fn sdf_check(val: glf) bool {
-    return (val >= -0.01 and val <= 0.01);
+    return @fabs(val) <= 0.01;
 }
 
 pub const MarchedCube = struct {
@@ -1622,7 +1622,6 @@ pub fn num_coords_equal(v1: Vector3_gl, v2: Vector3_gl) usize {
 }
 
 pub fn sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
-
     // We calculate the normal by finding the gradient of the field at the
     // point that we are interested in. We can find the gradient by getting
     // the difference in field at that point and a point slighttly away from it.
@@ -1633,4 +1632,11 @@ pub fn sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
         .y = sdfp + sdf(point.added(.{ .y = h })),
         .z = sdfp + sdf(point.added(.{ .z = h })),
     });
+}
+
+pub fn dir_sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
+    // returns gradient pointing away from 0. So we negate when inside the shape.
+    var gradient = sdf_gradient(point, sdf);
+    if (sdf(point) < 0) gradient = gradient.negated();
+    return gradient;
 }

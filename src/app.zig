@@ -91,7 +91,7 @@ pub fn sdf_default_cube(point: Vector3_gl) glf {
     // vec3 q = abs(p) - b;
     // return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0)
     const q = (point.absed()).subtracted(size);
-    return q.maxed(0.0).length() + min(max(q.x, max(q.y, q.z)), 0.0);
+    return q.maxed(0.0).length() + min(max(q.x, max(q.y, q.z)), 0.0) - 0.01;
 }
 
 pub fn sdf_default_sphere(point: Vector3_gl) glf {
@@ -111,9 +111,13 @@ pub fn sdf_cylinder(point: Vector3_gl, height: glf, radius: glf) glf {
 
 pub fn my_sdf(point: Vector3_gl) glf {
     var d = sdf_default_cube(point);
-    var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .x = 1 }, std.math.pi / 2.0), 3.13, 0.125);
-    if (false) return smooth_sub(d2, d, 0.1);
+    var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .z = 1 }, std.math.pi / 2.0), 3.13, 0.125);
+    if (true) return smooth_sub(d2, d, 0.1);
     return d;
+}
+
+pub fn buffer_sdf(point: Vector3_gl) glf {
+    return my_sdf(point) + 0.03;
 }
 
 pub const App = struct {
@@ -142,14 +146,15 @@ pub const App = struct {
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
-        self.cube.generate_from_sdf(my_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
+        self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
+        self.cube.align_normals(buffer_sdf);
         if (true) {
             // cube
             {
                 const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.3 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -1.2 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -0.7 };
                 const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), my_sdf, axis, true);
+                self.vines.grow(point, dir.normalized(), my_sdf, axis, true, 0.3);
             }
             if (false) {
                 const point = Vector3_gl{ .x = -0.5, .y = 0.5, .z = -0.3 };
@@ -161,9 +166,9 @@ pub const App = struct {
         if (false) {
             {
                 const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -0.2 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
                 const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, false);
+                self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, false, 0.2);
             }
             // {
             //     const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
@@ -204,14 +209,14 @@ pub const App = struct {
                 marched_cube.generate_mesh(pos, .{}, verts, &self.cube, self.arena);
             }
         }
-        if (true) {
+        if (false) {
             // cubes at vine points
             for (self.vines.vines.items) |vine| {
                 for (vine.points.items) |point| {
                     var cube = Mesh.unit_cube(self.arena);
                     defer cube.deinit();
                     cube.set_position(point.position);
-                    cube.set_scalef(0.1);
+                    cube.set_scalef(0.05 * point.scale);
                     self.cube.append_mesh(&cube);
                 }
             }
