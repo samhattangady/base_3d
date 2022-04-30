@@ -84,3 +84,24 @@ options that we can explore. Lets look at the list and see what is the thing
 that we can work on next.
 
 Or lets just get some satisfaction, and make a surface through which we can weave through.
+
+---
+
+29 Apr 2022:
+We really need to try and figure out why the winding of the sdf doesn't work the
+way that we would expect that it should. Sure there are some undeen things that
+could theoretically pop up, but even the, I do think that it should atleast
+somehow align to our expectations. Unless we've really messed something up, and
+it is completely opposite of what we believe it to be.
+
+So what is the best way then to work through all of that? That's what I am
+trying to figure out right now. In my head, I have a method, that has to do with
+the perpendicular place to the moving direction. That might be interesting?
+
+Or maybe we should get a little more systematic about the growth algorithm,
+rather than the wierd way that we are doing it now. We should ideally have no
+extra points, just points at all the positions in the vine where the direction
+changes. Then all the things can be stored locally, and we can get on with the
+whole growth aspect of the sdf. Maybe rewriting it that way could make it be a
+little cleaner. To be honest, there is some kind of looping involved there, but
+we can resolve that.

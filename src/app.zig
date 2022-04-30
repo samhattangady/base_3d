@@ -151,8 +151,8 @@ pub const App = struct {
         if (true) {
             // cube
             {
-                const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.3 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -0.7 };
+                const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.49 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -0.5 };
                 const axis = Vector3_gl{ .y = 1.0 };
                 self.vines.grow(point, dir.normalized(), my_sdf, axis, true, 0.3);
             }

@@ -981,7 +981,7 @@ pub const Camera3D = struct {
     aspect_ratio: glf = (16.0 / 9.0),
 
     pub fn new() Self {
-        const pos = Vector3_gl{ .z = 5.0, .x = -1.0, .y = -0.7 };
+        const pos = Vector3_gl{ .z = -5.0, .x = 1.0, .y = -0.7 };
         return .{
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
@@ -1624,7 +1624,7 @@ pub fn num_coords_equal(v1: Vector3_gl, v2: Vector3_gl) usize {
 pub fn sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
     // We calculate the normal by finding the gradient of the field at the
     // point that we are interested in. We can find the gradient by getting
-    // the difference in field at that point and a point slighttly away from it.
+    // the difference in field at that point and a point slightly away from it.
     const h: glf = 0.0001;
     const sdfp = -sdf(point);
     return Vector3_gl.normalize(.{

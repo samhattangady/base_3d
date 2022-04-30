@@ -15,6 +15,7 @@ const MouseState = helpers.MouseState;
 const Mesh = helpers.Mesh;
 const MeshVertex = helpers.MeshVertex;
 const glf = c.GLfloat;
+const sdf_check = helpers.sdf_check;
 
 const VinePoint = struct {
     position: Vector3_gl,
@@ -70,33 +71,14 @@ pub const Vines = struct {
 
     pub fn grow(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, ccw: bool, step_size: glf) void {
         // TODO (24 Apr 2022 sam): Automatically calculate ccw here. It should be possible
+        _ = ccw;
         if (!helpers.sdf_check(sdf_fn(point)))
             unreachable; // the vine does not start at the sdf surface.
-        var pos = point;
-        var dir = direction;
-        var i: usize = 0;
         var vine = Vine.init(self.allocator, axis);
-        vine.points.append(.{ .position = pos, .direction = dir }) catch unreachable;
-        while (true) : (i += 1) {
-            const next = self.get_next_pos(pos, &dir, sdf_fn, axis, ccw, step_size);
-            if (next) |next_pos| {
-                //std.debug.assert(helpers.sdf_check(sdf_fn(next_pos))); // new pos must be along sdf surface.
-                pos = next_pos;
-                vine.points.append(.{ .position = pos, .direction = dir }) catch unreachable;
-                if (dir.is_zero()) break;
-            } else {
-                break;
-            }
-            if (i > 100) {
-                std.debug.print("Ending vine generation. Vine has become very long\n", .{});
-                break;
-            }
-            if (dir.dotted(direction) < -0.99) {
-                std.debug.print("ending vine generation. going opposite direction\n", .{});
-                break;
-            }
-        }
+        self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size);
         std.debug.assert(vine.points.items.len > 0);
+        std.debug.print("vine num points = {d}\n", .{vine.points.items.len});
+        var i: usize = 0;
         // get length of current vine
         var total_len: glf = 0.0;
         {
@@ -246,70 +228,37 @@ pub const Vines = struct {
         }
     }
 
-    pub fn get_next_pos(self: *Self, point: Vector3_gl, direction: *Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, ccw: bool, step_size: glf) ?Vector3_gl {
+    fn grow_vine(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, step_size: glf) void {
         _ = self;
-        _ = ccw;
         _ = axis;
-        const end = point.added(direction.*.scaled(step_size));
-        const dist = sdf_fn(end);
-        // the vine is still growing along the sdf
-        if (helpers.sdf_check(dist)) return end;
-        std.debug.assert(helpers.sdf_check(sdf_fn(point)));
-        // we either have to find the edge of the surface in the given direction
-        // or we are at the edge, and have to find the new direction.
-        if (helpers.sdf_check(sdf_fn(point.lerped(end, 0.01)))) {
-            std.debug.print("detecting edge\n", .{});
-            // the edge is somewhere between point and end, we have to find the edge.
-            // TODO (22 Apr 2022 sam): Use some kind of binary search to make this faster.
-            var t: glf = 0.0;
-            var pos = point.lerped(end, t);
-            while (helpers.sdf_check(sdf_fn(pos))) {
-                t += 0.01;
-                pos = point.lerped(end, t);
-                if (t > 1.01) unreachable; // could not find an edge between previous point and now
-            }
-            t -= 0.01;
-            std.debug.print("found at {d}\n", .{t});
-            pos = point.lerped(end, t);
-            return pos;
-        } else {
-            std.debug.print("new direction\n", .{});
-            // point is right at the edge, we now have to find the new pos
-            // and update direction.
-            {
-                // use the gradient to find the next point.
-                const cross = axis.crossed(direction.*).scaled(0.01);
-                const near = point.lerped(end, 0.01);
-                const new0 = near.added(cross);
-                const new1 = near.added(cross.negated());
-                var pos = if (sdf_fn(new0) < sdf_fn(new1)) new0 else new1;
-                if (true) {
-                    direction.* = .{};
-                    return pos;
-                }
-                const gradient = helpers.dir_sdf_gradient(pos, sdf_fn);
-                var i: usize = 0;
-                while (!helpers.sdf_check(sdf_fn(pos))) {
-                    pos = pos.added(gradient.scaled(-sdf_fn(pos)));
-                    i += 1;
-                    if (i > 100) return null;
-                }
-                direction.* = pos.subtracted(point).normalized();
-                return point;
-            }
-            if (false) {
-                var count: usize = 0;
-                var dir = direction.*.scaled(0.01);
-                var pos = point.added(dir);
-                const mult: glf = if (ccw) 1.0 else -1.0;
-                while (!helpers.sdf_check(sdf_fn(pos))) {
-                    pos = pos.rotated_about_point_axis(point, .{ .y = 1 }, mult * helpers.TWO_PI / 500.0);
-                    count += 1;
-                    if (count > 500) return null; // could not turn and find next point
-                }
-                direction.* = pos.subtracted(point).normalized();
-                return pos;
-            }
+        var pos = point;
+        var dir = direction;
+        var inside: Vector3_gl = undefined;
+        var i: usize = 0;
+        // TODO (29 Apr 2022 sam): Rather than asserting, we should instead find
+        // the closest point along the sdf or something along those lines maybe.
+        std.debug.assert(sdf_check(sdf_fn(point)));
+        vine.points.append(.{ .position = point, .direction = direction }) catch unreachable;
+        // TODO (29 Apr 2022 sam): Figure out what is the best way to handle end
+        // of growth of vine
+        while (i < 50) : (i += 1) {
+            // find the pos closest to the surface
+            const gradient = helpers.sdf_gradient(pos, sdf_fn).negated();
+            while (!sdf_check(sdf_fn(pos)))
+                pos = pos.added(gradient.scaled(sdf_fn(pos)));
+            // keep moving in direction until we move off the sdf surface.
+            const start = pos;
+            var count: usize = 0;
+            while (sdf_check(sdf_fn(pos))) : (count += 1)
+                pos = pos.added(dir.scaled(0.01 * step_size));
+            std.debug.print("iter {d} took {d} steps\n", .{ i, count });
+            // add the last point on the surface to the vine
+            pos = pos.added(dir.scaled(-0.01 * step_size));
+            vine.points.append(.{ .position = pos, .direction = dir }) catch unreachable;
+            // update the direction to new growth direction
+            const mid = start.lerped(pos, 0.5);
+            inside = helpers.sdf_gradient(mid, sdf_fn).negated();
+            dir = inside;
         }
     }
 };
