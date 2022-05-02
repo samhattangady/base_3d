@@ -151,10 +151,10 @@ pub const App = struct {
         if (true) {
             // cube
             {
-                const point = Vector3_gl{ .z = -0.5, .y = 0.5, .x = -0.49 };
+                const point = Vector3_gl{ .z = -0.51, .y = 0.41, .x = -0.4 };
                 const dir = Vector3_gl{ .x = 1.0, .y = -0.5 };
                 const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), my_sdf, axis, true, 0.3);
+                self.vines.grow(point, dir.normalized(), my_sdf, axis, true, 1.0);
             }
             if (false) {
                 const point = Vector3_gl{ .x = -0.5, .y = 0.5, .z = -0.3 };
@@ -221,7 +221,17 @@ pub const App = struct {
                 }
             }
         }
-        self.vines.regenerate_mesh(0.95);
+        if (true) {
+            // cubes at debug points
+            for (self.vines.debug.items) |debug| {
+                var cube = Mesh.unit_cube(self.arena);
+                defer cube.deinit();
+                cube.set_position(debug);
+                cube.set_scalef(0.009);
+                self.cube.append_mesh(&cube);
+            }
+        }
+        self.vines.regenerate_mesh(0.99999);
         if (false) {
             // Marching Cubes test
             var m = MarchedCube.init();

@@ -16,6 +16,7 @@ const Mesh = helpers.Mesh;
 const MeshVertex = helpers.MeshVertex;
 const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
+const STEP_MULTIPLIER = 0.2;
 
 const VinePoint = struct {
     position: Vector3_gl,
@@ -47,12 +48,14 @@ pub const Vines = struct {
     vines: std.ArrayList(Vine),
     allocator: std.mem.Allocator,
     arena: std.mem.Allocator,
+    debug: std.ArrayList(Vector3_gl),
     ticks: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return .{
             .mesh = Mesh.init(allocator),
             .vines = std.ArrayList(Vine).init(allocator),
+            .debug = std.ArrayList(Vector3_gl).init(allocator),
             .allocator = allocator,
             .arena = arena,
         };
@@ -62,6 +65,7 @@ pub const Vines = struct {
         self.mesh.deinit();
         for (self.vines.items) |*vine| vine.deinit();
         self.vines.deinit();
+        self.debug.deinit();
     }
 
     pub fn update(self: *Self, ticks: u32, arena: std.mem.Allocator) void {
@@ -72,8 +76,10 @@ pub const Vines = struct {
     pub fn grow(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, ccw: bool, step_size: glf) void {
         // TODO (24 Apr 2022 sam): Automatically calculate ccw here. It should be possible
         _ = ccw;
-        if (!helpers.sdf_check(sdf_fn(point)))
+        if (!helpers.sdf_check(sdf_fn(point))) {
+            std.debug.print("dist from surface = {d}\n", .{sdf_fn(point)});
             unreachable; // the vine does not start at the sdf surface.
+        }
         var vine = Vine.init(self.allocator, axis);
         self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size);
         std.debug.assert(vine.points.items.len > 0);
@@ -233,7 +239,6 @@ pub const Vines = struct {
         _ = axis;
         var pos = point;
         var dir = direction;
-        var inside: Vector3_gl = undefined;
         var i: usize = 0;
         // TODO (29 Apr 2022 sam): Rather than asserting, we should instead find
         // the closest point along the sdf or something along those lines maybe.
@@ -241,24 +246,21 @@ pub const Vines = struct {
         vine.points.append(.{ .position = point, .direction = direction }) catch unreachable;
         // TODO (29 Apr 2022 sam): Figure out what is the best way to handle end
         // of growth of vine
-        while (i < 50) : (i += 1) {
-            // find the pos closest to the surface
-            const gradient = helpers.sdf_gradient(pos, sdf_fn).negated();
-            while (!sdf_check(sdf_fn(pos)))
-                pos = pos.added(gradient.scaled(sdf_fn(pos)));
+        while (i < 10) : (i += 1) {
+            std.debug.assert(sdf_check(sdf_fn(pos)));
             // keep moving in direction until we move off the sdf surface.
-            const start = pos;
-            var count: usize = 0;
-            while (sdf_check(sdf_fn(pos))) : (count += 1)
-                pos = pos.added(dir.scaled(0.01 * step_size));
-            std.debug.print("iter {d} took {d} steps\n", .{ i, count });
+            while (sdf_check(sdf_fn(pos)))
+                pos = pos.added(dir.scaled(STEP_MULTIPLIER * step_size));
             // add the last point on the surface to the vine
-            pos = pos.added(dir.scaled(-0.01 * step_size));
-            vine.points.append(.{ .position = pos, .direction = dir }) catch unreachable;
+            pos = pos.added(dir.scaled(-STEP_MULTIPLIER * step_size));
+            if (!pos.is_equal(vine.points.items[vine.points.items.len - 1].position)) {
+                std.debug.print("adding point {d} {d} {d}\n", .{ pos.x, pos.y, pos.z });
+                vine.points.append(.{ .position = pos, .direction = dir }) catch unreachable;
+            }
             // update the direction to new growth direction
-            const mid = start.lerped(pos, 0.5);
-            inside = helpers.sdf_gradient(mid, sdf_fn).negated();
-            dir = inside;
+            const gradient = helpers.sdf_gradient(pos, sdf_fn);
+            dir = gradient.negated();
+            self.debug.append(pos.added(dir)) catch unreachable;
         }
     }
 };

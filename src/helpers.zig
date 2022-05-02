@@ -475,6 +475,10 @@ pub const Vector3_gl = extern struct {
         };
     }
 
+    pub fn is_equal(v1: *const Self, v2: Self) bool {
+        return v1.x == v2.x and v1.y == v2.y and v1.z == v2.z;
+    }
+
     pub fn scaled(v: *const Self, a: c.GLfloat) Self {
         return .{ .x = v.x * a, .y = v.y * a, .z = v.z * a };
     }
@@ -1142,7 +1146,7 @@ pub const Mesh = struct {
 
 // checks if a value is very close to 0
 pub fn sdf_check(val: glf) bool {
-    return @fabs(val) <= 0.01;
+    return @fabs(val) <= 0.0001;
 }
 
 pub const MarchedCube = struct {
@@ -1626,11 +1630,10 @@ pub fn sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
     // point that we are interested in. We can find the gradient by getting
     // the difference in field at that point and a point slightly away from it.
     const h: glf = 0.0001;
-    const sdfp = -sdf(point);
     return Vector3_gl.normalize(.{
-        .x = sdfp + sdf(point.added(.{ .x = h })),
-        .y = sdfp + sdf(point.added(.{ .y = h })),
-        .z = sdfp + sdf(point.added(.{ .z = h })),
+        .x = sdf(point.added(.{ .x = h })) - sdf(point.added(.{ .x = -h })),
+        .y = sdf(point.added(.{ .y = h })) - sdf(point.added(.{ .y = -h })),
+        .z = sdf(point.added(.{ .z = h })) - sdf(point.added(.{ .z = -h })),
     });
 }
 
