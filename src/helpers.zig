@@ -703,6 +703,13 @@ pub const Matrix3_gl = extern struct {
         return Self.add(mat1.*, mat2);
     }
 
+    /// returns rotation matrix where the final positions are rotated to a
+    /// rotation frame where x axis is in x, and so on.
+    /// x, y, z should be normalized unless we want scaling.
+    pub fn rotation_matrix(x: Vector3_gl, y: Vector3_gl, z: Vector3_gl) Self {
+        return Self.build(x.x, x.y, x.z, y.x, y.y, y.z, z.x, z.y, z.z);
+    }
+
     pub fn identity() Self {
         return Matrix3_gl.build(
             1,

@@ -81,6 +81,27 @@ pub const Vines = struct {
             unreachable; // the vine does not start at the sdf surface.
         }
         var vine = Vine.init(self.allocator, axis);
+        if (false) {
+            // testing the rotation matrix.
+            const forward = direction.normalized();
+            const side = helpers.sdf_gradient(point, sdf_fn);
+            const up = forward.crossed(side);
+            const rot = Matrix3_gl.rotation_matrix(side, up, forward);
+            const p1 = Matrix3_gl.vec3_multiply(rot, .{ .x = 1 }).added(point);
+            const p2 = Matrix3_gl.vec3_multiply(rot, .{ .y = 1 }).added(point);
+            const p3 = Matrix3_gl.vec3_multiply(rot, .{ .z = 1 }).added(point);
+            _ = p1.added(p2).added(p3);
+            if (false) {
+                self.debug.append(forward.added(point)) catch unreachable;
+                self.debug.append(side.added(point)) catch unreachable;
+                self.debug.append(up.added(point)) catch unreachable;
+            }
+            if (false) {
+                self.debug.append(p1) catch unreachable;
+                self.debug.append(p2) catch unreachable;
+                self.debug.append(p3) catch unreachable;
+            }
+        }
         self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size);
         std.debug.assert(vine.points.items.len > 0);
         std.debug.print("vine num points = {d}\n", .{vine.points.items.len});

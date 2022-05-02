@@ -227,7 +227,7 @@ pub const App = struct {
                 var cube = Mesh.unit_cube(self.arena);
                 defer cube.deinit();
                 cube.set_position(debug);
-                cube.set_scalef(0.009);
+                cube.set_scalef(0.02);
                 self.cube.append_mesh(&cube);
             }
         }
