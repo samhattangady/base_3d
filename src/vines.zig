@@ -104,7 +104,7 @@ pub const Vines = struct {
                 self.debug.append(p3) catch unreachable;
             }
         }
-        self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size, 15);
+        self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size, 20);
         std.debug.assert(vine.points.items.len > 0);
         std.debug.print("vine num points = {d}\n", .{vine.points.items.len});
         var i: usize = 0;

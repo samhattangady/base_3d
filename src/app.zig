@@ -86,6 +86,14 @@ pub fn smooth_sub(d1: glf, d2: glf, k: glf) glf {
     return helpers.lerpf(d2, -d1, h) + k * h * (1.0 - h);
 }
 
+pub fn smooth_add(d1: glf, d2: glf, k: glf) glf {
+    // float opSmoothUnion( float d1, float d2, float k ) {
+    // float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    // return mix( d2, d1, h ) - k*h*(1.0-h); }
+    const h = std.math.clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return helpers.lerpf(d2, d1, h) - k * h * (1.0 - h);
+}
+
 pub fn sdf_default_cube(point: Vector3_gl) glf {
     const size = Vector3_gl{ .x = 0.5, .y = 0.5, .z = 0.5 };
     // https://iquilezles.org/articles/distfunctions/
@@ -97,6 +105,10 @@ pub fn sdf_default_cube(point: Vector3_gl) glf {
 
 pub fn sdf_default_sphere(point: Vector3_gl) glf {
     return point.length() - 0.5;
+}
+
+pub fn sdf_sphere(point: Vector3_gl, center: Vector3_gl, radius: glf) glf {
+    return point.distance_to(center) - radius;
 }
 
 pub fn sdf_cylinder(point: Vector3_gl, height: glf, radius: glf) glf {
@@ -113,8 +125,9 @@ pub fn sdf_cylinder(point: Vector3_gl, height: glf, radius: glf) glf {
 pub fn my_sdf(point: Vector3_gl) glf {
     var d = sdf_default_cube(point);
     var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .z = 1 }, std.math.pi / 2.0), 3.13, 0.125);
-    if (true) return smooth_sub(d2, d, 0.1);
-    return d;
+    d = smooth_sub(d2, d, 0.1);
+    d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.3);
+    return smooth_add(d, d2, 0.3);
 }
 
 pub fn buffer_sdf(point: Vector3_gl) glf {
