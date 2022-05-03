@@ -148,11 +148,12 @@ pub const App = struct {
         try self.typesetter.init(&self.cam2d, self.allocator);
         self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
         self.cube.align_normals(buffer_sdf);
+        const start = std.time.milliTimestamp();
         if (true) {
             // cube
             {
-                const point = Vector3_gl{ .z = -0.51, .y = 0.41, .x = -0.4 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -0.5 };
+                const point = Vector3_gl{ .z = -0.51, .y = 0.31, .x = -0.3 };
+                const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
                 const axis = Vector3_gl{ .y = 1.0 };
                 self.vines.grow(point, dir.normalized(), my_sdf, axis, true, 1.0);
             }
@@ -163,6 +164,8 @@ pub const App = struct {
                 self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, false);
             }
         }
+        const end = std.time.milliTimestamp();
+        std.debug.print("vine growing took {d} ticks\n", .{end - start});
         if (false) {
             {
                 const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
@@ -231,7 +234,10 @@ pub const App = struct {
                 self.cube.append_mesh(&cube);
             }
         }
+        const s2 = std.time.milliTimestamp();
         self.vines.regenerate_mesh(0.99999);
+        const s3 = std.time.milliTimestamp();
+        std.debug.print("mesh regen took {d} ticks\n", .{s3 - s2});
         if (false) {
             // Marching Cubes test
             var m = MarchedCube.init();

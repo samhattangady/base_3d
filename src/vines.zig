@@ -16,24 +16,24 @@ const Mesh = helpers.Mesh;
 const MeshVertex = helpers.MeshVertex;
 const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
-const STEP_MULTIPLIER = 0.2;
+const STEP_MULTIPLIER = 0.1;
 
 const VinePoint = struct {
     position: Vector3_gl,
     direction: Vector3_gl,
+    axis: Vector3_gl,
     scale: glf = 1.0,
 };
 
 const Vine = struct {
     const Self = @This();
     points: std.ArrayList(VinePoint),
-    /// axis about which the vine rotates while growing
-    axis: Vector3_gl,
 
+    /// axis about which the vine rotates while growing
     pub fn init(allocator: std.mem.Allocator, axis: Vector3_gl) Self {
+        _ = axis;
         return Self{
             .points = std.ArrayList(VinePoint).init(allocator),
-            .axis = axis,
         };
     }
 
@@ -130,6 +130,8 @@ pub const Vines = struct {
             }
             vine.points.items[vine.points.items.len - 1].scale = 0.0;
         }
+        // TODO (03 May 2022 sam): Update axis of each point so that the
+        // transitions are smoother...
         self.vines.append(vine) catch unreachable;
     }
 
@@ -172,23 +174,24 @@ pub const Vines = struct {
                     .position = prev_point.position.lerped(cur_point.position, t),
                     // TODO (23 Apr 2022 sam): what should the direction be?
                     .direction = prev_point.direction,
+                    .axis = prev_point.axis.lerped(cur_point.axis, t),
                     .scale = helpers.lerpf(amount * prev_point.scale, amount * cur_point.scale, t),
                 };
                 current_points.append(point) catch unreachable;
             }
             if (current_points.items.len > 0)
-                self.generate_single_vine_mesh(current_points.items[0..], vine.axis);
+                self.generate_single_vine_mesh(current_points.items[0..]);
         }
     }
 
-    fn generate_single_vine_mesh(self: *Self, points: []VinePoint, axis: Vector3_gl) void {
+    fn generate_single_vine_mesh(self: *Self, points: []VinePoint) void {
         var vertices = std.ArrayList(MeshVertex).init(self.arena);
         defer vertices.deinit();
         // TODO (23 Apr 2022 sam): I have a feeling there is something odd with NUMEDGES. with the -1s etc.
         const NUM_EDGES = 7.0;
         const NUM_EDGESi = @floatToInt(usize, NUM_EDGES);
         for (points) |vp| {
-            const p1 = vp.position.added(axis.scaled(0.005 + 0.08 * vp.scale));
+            const p1 = vp.position.added(vp.axis.scaled(0.005 + 0.08 * vp.scale));
             var angle: glf = 0.0;
             while (angle < helpers.TWO_PI) : (angle += helpers.TWO_PI / (NUM_EDGES - 1.0)) {
                 const p = p1.rotated_about_point_axis(vp.position, vp.direction, angle);
@@ -260,28 +263,109 @@ pub const Vines = struct {
         _ = axis;
         var pos = point;
         var dir = direction;
-        var i: usize = 0;
         // TODO (29 Apr 2022 sam): Rather than asserting, we should instead find
         // the closest point along the sdf or something along those lines maybe.
         std.debug.assert(sdf_check(sdf_fn(point)));
-        vine.points.append(.{ .position = point, .direction = direction }) catch unreachable;
-        // TODO (29 Apr 2022 sam): Figure out what is the best way to handle end
-        // of growth of vine
-        while (i < 10) : (i += 1) {
-            std.debug.assert(sdf_check(sdf_fn(pos)));
-            // keep moving in direction until we move off the sdf surface.
-            while (sdf_check(sdf_fn(pos)))
-                pos = pos.added(dir.scaled(STEP_MULTIPLIER * step_size));
-            // add the last point on the surface to the vine
-            pos = pos.added(dir.scaled(-STEP_MULTIPLIER * step_size));
-            if (!pos.is_equal(vine.points.items[vine.points.items.len - 1].position)) {
-                std.debug.print("adding point {d} {d} {d}\n", .{ pos.x, pos.y, pos.z });
-                vine.points.append(.{ .position = pos, .direction = dir }) catch unreachable;
+        const point_axis = helpers.sdf_gradient(point, sdf_fn);
+        vine.points.append(.{ .position = point, .direction = direction, .axis = point_axis }) catch unreachable;
+        var i: usize = 0;
+        while (i < 150) : (i += 1) {
+            // first we find the points along a circle that lie along the plane
+            // that we are travelling on that are STEP_MULTIPLIER * step_size from
+            // the current position.
+            // we find 6 points, and check whether the edge lies between them. we
+            // assume that there is only one edge. We start at -150 deg so that we
+            // dont accidentally go back the way that we came.
+            // TODO (03 May 2022 sam):
+            var angles = [6]glf{ 0, 0, 0, 0, 0, 0 };
+            const step: glf = 360.0 / 6.0;
+            for (angles) |*a, j| {
+                const deg: glf = -180 + (step / 2) + (step * @intToFloat(glf, j));
+                a.* = deg * std.math.pi / 180;
             }
-            // update the direction to new growth direction
-            const gradient = helpers.sdf_gradient(pos, sdf_fn);
-            dir = gradient.negated();
-            self.debug.append(pos.added(dir)) catch unreachable;
+            const forward = dir.normalized();
+            const inside = helpers.sdf_gradient(pos, sdf_fn);
+            var up = dir.crossed(inside).negated();
+            if (up.dotted(axis) < 0) up = up.negated();
+            const rot = Matrix3_gl.rotation_matrix(inside, up, forward);
+            const rad = STEP_MULTIPLIER * step_size;
+            var a_neg: glf = undefined;
+            var a_pos: glf = undefined;
+            var new_pos: Vector3_gl = undefined;
+            var found_new = false;
+            if (false) {
+                // debug points along plane.
+                for (angles) |a| {
+                    const p1 = helpers.xz_circle(a, rad).mat3_multiply(rot).added(pos);
+                    self.debug.append(p1) catch unreachable;
+                }
+            }
+            for (angles) |a, j| {
+                if (j == angles.len - 1) unreachable; // couldn't find the angle pair
+                const p1 = helpers.xz_circle(a, rad).mat3_multiply(rot).added(pos);
+                const p2 = helpers.xz_circle(angles[j + 1], rad).mat3_multiply(rot).added(pos);
+                const d1 = sdf_fn(p1);
+                const d2 = sdf_fn(p2);
+                if (sdf_check(d1)) {
+                    new_pos = p1;
+                    found_new = true;
+                    break;
+                }
+                if (sdf_check(d2)) {
+                    new_pos = p2;
+                    found_new = true;
+                    break;
+                }
+                if (helpers.opposite_signs(d1, d2)) {
+                    if (d1 < 0) {
+                        a_neg = angles[j];
+                        a_pos = angles[j + 1];
+                        break;
+                    }
+                    if (d2 < 0) {
+                        a_neg = angles[j + 1];
+                        a_pos = angles[j];
+                        break;
+                    }
+                    unreachable; // neither is less than 0.
+                }
+            }
+            if (!found_new) {
+                // use a binary search type algo to find the angle between
+                // a_neg and a_pos that lies along the radius of the circle
+                // that is along the surface.
+                new_pos = helpers.xz_circle((a_neg + a_pos) / 2.0, rad).mat3_multiply(rot).added(pos);
+                if (false) {
+                    std.debug.print("apos = {d}\t", .{(a_pos) / 2.0 * 180 / std.math.pi});
+                    std.debug.print("aneg = {d}\t", .{(a_neg) / 2.0 * 180 / std.math.pi});
+                    std.debug.print("finding thing...\n", .{});
+                }
+                while (!sdf_check(sdf_fn(new_pos))) {
+                    if (@fabs(a_neg - a_pos) < 0.0000000001) unreachable; // no angle found.
+                    const dist = sdf_fn(new_pos);
+                    if (false) {
+                        const ap = helpers.xz_circle((a_pos), rad).mat3_multiply(rot).added(pos);
+                        const an = helpers.xz_circle((a_neg), rad).mat3_multiply(rot).added(pos);
+                        const dap = sdf_fn(ap);
+                        const dan = sdf_fn(an);
+                        std.debug.print("d-pos = {d}\t d-neg = {d}\n", .{ dap, dan });
+                        std.debug.assert(dap > dan);
+
+                        std.debug.print("apos=  {d}\t", .{(a_pos) / 2.0 * 180 / std.math.pi});
+                        std.debug.print("aneg=  {d}\t", .{(a_neg) / 2.0 * 180 / std.math.pi});
+                        std.debug.print("dist = {d}\n", .{dist});
+                    }
+                    if (dist > 0) {
+                        a_pos = (a_neg + a_pos) / 2.0;
+                    } else {
+                        a_neg = (a_neg + a_pos) / 2.0;
+                    }
+                    new_pos = helpers.xz_circle((a_neg + a_pos) / 2.0, rad).mat3_multiply(rot).added(pos);
+                }
+            }
+            dir = new_pos.subtracted(pos).normalized();
+            pos = new_pos;
+            vine.points.append(.{ .position = pos, .direction = dir, .axis = inside }) catch unreachable;
         }
     }
 };

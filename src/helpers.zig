@@ -1650,3 +1650,17 @@ pub fn dir_sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl 
     if (sdf(point) < 0) gradient = gradient.negated();
     return gradient;
 }
+
+/// returns a point along the xz plane that is at angle a from z+ve axis
+pub fn xz_circle(a: glf, radius: glf) Vector3_gl {
+    return .{
+        .x = @sin(a) * radius,
+        .z = @cos(a) * radius,
+    };
+}
+
+pub fn opposite_signs(a: glf, b: glf) bool {
+    if (a > 0) return b < 0;
+    if (a < 0) return b > 0;
+    return false;
+}
