@@ -287,7 +287,7 @@ pub const Vines = struct {
         var prng = std.rand.DefaultPrng.init(0);
         var rand = prng.random();
         var i: usize = 0;
-        while (i < 368) : (i += 1) {
+        while (i < 150) : (i += 1) {
             // first we find the points along a circle that lie along the plane
             // that we are travelling on that are STEP_MULTIPLIER * step_size from
             // the current position.
@@ -380,29 +380,11 @@ pub const Vines = struct {
                     new_pos = helpers.xz_circle((a_neg + a_pos) / 2.0, rad).mat3_multiply(rot).added(pos);
                 }
             }
-            var new_dir = new_pos.subtracted(pos).normalized();
-            // check if new_pos is within step_size * STEP_MULTIPLIER of any other
-            // point in the vine (excluding previous point).
-            const dist_sqr = std.math.pow(glf, step_size * STEP_MULTIPLIER, 2);
-            var neighbours = std.ArrayList(VinePoint).init(self.arena);
-            defer neighbours.deinit();
-            for (vine.points.items) |vp, j| {
-                if (j == vine.points.items.len - 1) break;
-                if (new_pos.distance_to_sqr(vp.position) < dist_sqr) {
-                    // we only care about points that are very similar in direction
-                    // to our current point
-                    if (new_dir.dotted(vp.direction) > 0.9) {
-                        neighbours.append(vp) catch unreachable;
-                    }
-                }
-            }
-            if (neighbours.items.len > 0) {
-                std.debug.print("{d} nudging point\n", .{i});
-                // TODO (03 May 2022 sam): Maybe we should do some more checks here
-                // to make sure the change is as we like?
-                const angle = helpers.lerpf(-std.math.pi / 6.0, std.math.pi / 6.0, rand.float(glf));
-                new_pos = new_pos.rotated_about_point_axis(pos, inside, angle);
-                new_pos = helpers.sdf_closest(new_pos, sdf_fn);
+            const angle = helpers.lerpf(-std.math.pi / 8.0, std.math.pi / 8.0, rand.float(glf));
+            const nudged_pos = new_pos.rotated_about_point_axis(pos, inside, angle);
+            // This sometimes gives us an infinite loop, so it's an opt
+            if (helpers.sdf_closest(nudged_pos, sdf_fn)) |closest| {
+                new_pos = closest;
             }
             dir = new_pos.subtracted(pos).normalized();
             pos = new_pos;

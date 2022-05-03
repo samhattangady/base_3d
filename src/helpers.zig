@@ -1659,10 +1659,15 @@ pub fn dir_sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl 
     return gradient;
 }
 
-pub fn sdf_closest(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
+// TODO (03 May 2022 sam): This sometimes gives us an infinite loop, so we short
+// circuit out of it with a null. This shouldn't be possible.
+pub fn sdf_closest(point: Vector3_gl, sdf: fn (Vector3_gl) glf) ?Vector3_gl {
+    var count: usize = 0;
     var pos = point;
     while (!sdf_check(sdf(pos))) {
         pos = pos.added(dir_sdf_gradient(pos, sdf).negated().scaled(sdf(pos)));
+        count += 1;
+        if (count > 30) return null;
     }
     return pos;
 }
