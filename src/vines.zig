@@ -171,6 +171,7 @@ pub const Vines = struct {
                     break;
                 }
             }
+            if (false) std.debug.print("last_point_index = {d}\n", .{last});
             if (need_lerped_point) {
                 // generate a point that is at exactly progress = amount
                 std.debug.assert(last > 0);
@@ -278,17 +279,18 @@ pub const Vines = struct {
         std.debug.assert(sdf_check(sdf_fn(point)));
         const point_axis = helpers.sdf_gradient(point, sdf_fn);
         vine.points.append(.{ .position = point, .direction = direction, .axis = point_axis }) catch unreachable;
+        var prng = std.rand.DefaultPrng.init(0);
+        var rand = prng.random();
         var i: usize = 0;
         while (i < 150) : (i += 1) {
             // first we find the points along a circle that lie along the plane
             // that we are travelling on that are STEP_MULTIPLIER * step_size from
             // the current position.
-            // we find 6 points, and check whether the edge lies between them. we
-            // assume that there is only one edge. We start at -150 deg so that we
+            // we find 4 points, and check whether the edge lies between them. we
+            // assume that there is only one edge. We start at -135 deg so that we
             // dont accidentally go back the way that we came.
-            // TODO (03 May 2022 sam):
-            var angles = [6]glf{ 0, 0, 0, 0, 0, 0 };
-            const step: glf = 360.0 / 6.0;
+            var angles = [4]glf{ 0, 0, 0, 0 };
+            const step: glf = 360.0 / 4.0;
             for (angles) |*a, j| {
                 const deg: glf = -180 + (step / 2) + (step * @intToFloat(glf, j));
                 a.* = deg * std.math.pi / 180;
@@ -372,6 +374,30 @@ pub const Vines = struct {
                     }
                     new_pos = helpers.xz_circle((a_neg + a_pos) / 2.0, rad).mat3_multiply(rot).added(pos);
                 }
+            }
+            var new_dir = new_pos.subtracted(pos).normalized();
+            // check if new_pos is within step_size * STEP_MULTIPLIER of any other
+            // point in the vine (excluding previous point).
+            const dist_sqr = std.math.pow(glf, step_size * STEP_MULTIPLIER, 2);
+            var neighbours = std.ArrayList(VinePoint).init(self.arena);
+            defer neighbours.deinit();
+            for (vine.points.items) |vp, j| {
+                if (j == vine.points.items.len - 1) break;
+                if (new_pos.distance_to_sqr(vp.position) < dist_sqr) {
+                    // we only care about points that are very similar in direction
+                    // to our current point
+                    if (new_dir.dotted(vp.direction) > 0.9) {
+                        neighbours.append(vp) catch unreachable;
+                    }
+                }
+            }
+            if (neighbours.items.len > 0) {
+                std.debug.print("{d} nudging point\n", .{i});
+                // TODO (03 May 2022 sam): Maybe we should do some more checks here
+                // to make sure the change is as we like?
+                const angle = helpers.lerpf(-std.math.pi / 6.0, std.math.pi / 6.0, rand.float(glf));
+                new_pos = new_pos.rotated_about_point_axis(pos, inside, angle);
+                new_pos = helpers.sdf_closest(new_pos, sdf_fn);
             }
             dir = new_pos.subtracted(pos).normalized();
             pos = new_pos;

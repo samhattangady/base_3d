@@ -567,6 +567,10 @@ pub const Vector3_gl = extern struct {
         return Self.length_sqr(v1.subtracted(v2));
     }
 
+    pub fn distance_to_sqr(v1: *const Self, v2: Self) glf {
+        return Self.distance_sqr(v1.*, v2);
+    }
+
     pub fn distance(v1: Self, v2: Self) glf {
         return @sqrt(Self.length_sqr(v1.subtracted(v2)));
     }
@@ -1649,6 +1653,14 @@ pub fn dir_sdf_gradient(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl 
     var gradient = sdf_gradient(point, sdf);
     if (sdf(point) < 0) gradient = gradient.negated();
     return gradient;
+}
+
+pub fn sdf_closest(point: Vector3_gl, sdf: fn (Vector3_gl) glf) Vector3_gl {
+    var pos = point;
+    while (!sdf_check(sdf(pos))) {
+        pos = pos.added(dir_sdf_gradient(pos, sdf).negated().scaled(sdf(pos)));
+    }
+    return pos;
 }
 
 /// returns a point along the xz plane that is at angle a from z+ve axis
