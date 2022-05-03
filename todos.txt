@@ -1,14 +1,23 @@
+## TODOS
+
 [ ] Create spawning algorithm for the vine initial positions
-[ ] Fix winding algorithm to work with all shapes
-[x] Render the sdf
-[ ] Add randomness to vine growth algorithm
 [ ] Add thickness controls to the vines.
     [ ] Limit max thickness of vine
-[ ] Add branching
-[ ] Figure out how to end vine growth
-[ ] See if we can use gradient of the sdf field to do vine growth.
-
+[ ] Convert 3d models to sdf
+[ ] Add leaves - geometry shader?
+[ ] leaves growth
+[ ] leaves falling
+[ ] color for vines
+[ ] color for leaves
+[ ] "occlusion" / effects for object near vines.
 ---
-
+[x] Fix winding algorithm to work with all shapes
+[x] Render the sdf
+[x] Figure out how to end vine growth
+[o] See if we can use gradient of the sdf field to do vine growth.
+    - didn't work. 
+[x] Add randomness to vine growth algorithm
+[x] Add branching
+---
 [ ] Why does gvim on linux not work correctly with autoformat zig?
     But vim in terminal does...

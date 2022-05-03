@@ -17,6 +17,7 @@ const MeshVertex = helpers.MeshVertex;
 const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
 const STEP_MULTIPLIER = 0.1;
+const BRANCH_NUM_POINTS = 20;
 
 const VinePoint = struct {
     position: Vector3_gl,
@@ -28,10 +29,10 @@ const VinePoint = struct {
 const Vine = struct {
     const Self = @This();
     points: std.ArrayList(VinePoint),
+    start_scale: glf = 1.0,
 
     /// axis about which the vine rotates while growing
-    pub fn init(allocator: std.mem.Allocator, axis: Vector3_gl) Self {
-        _ = axis;
+    pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .points = std.ArrayList(VinePoint).init(allocator),
         };
@@ -75,43 +76,41 @@ pub const Vines = struct {
         self.arena = arena;
     }
 
-    pub fn grow(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, ccw: bool, step_size: glf) void {
-        // TODO (24 Apr 2022 sam): Automatically calculate ccw here. It should be possible
-        _ = ccw;
+    pub fn grow(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf) void {
+        self.grow_single_vine(point, direction, sdf_fn, step_size, vine_length, 1.0);
+        var branches = std.ArrayList([3]Vector3_gl).init(self.arena);
+        defer branches.deinit();
+        var prng = std.rand.DefaultPrng.init(0);
+        var rand = prng.random();
+        const vine = self.vines.items[0];
+        var i: usize = BRANCH_NUM_POINTS;
+        var neg = false;
+        while (i < vine.points.items.len) : (i += BRANCH_NUM_POINTS) {
+            const vp = vine.points.items[i];
+            const pos = vp.position;
+            var angle = helpers.lerpf(std.math.pi / 6.0, std.math.pi / 5.0, rand.float(glf));
+            if (neg) angle *= -1.0;
+            neg = !neg;
+            const dir = vp.direction.rotated_about_point_axis(.{}, vp.axis, angle);
+            branches.append(.{ pos, dir, .{ .x = vp.scale } }) catch unreachable;
+        }
+        for (branches.items) |branch| {
+            const scale = branch[2].x;
+            self.grow_single_vine(branch[0], branch[1], sdf_fn, step_size, vine_length * scale, scale);
+        }
+    }
+
+    fn grow_single_vine(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf, start_scale: glf) void {
         if (!helpers.sdf_check(sdf_fn(point))) {
             std.debug.print("dist from surface = {d}\n", .{sdf_fn(point)});
             unreachable; // the vine does not start at the sdf surface.
         }
-        var vine = Vine.init(self.allocator, axis);
-        if (false) {
-            // testing the rotation matrix.
-            const forward = direction.normalized();
-            const side = helpers.sdf_gradient(point, sdf_fn);
-            const up = forward.crossed(side);
-            const rot = Matrix3_gl.rotation_matrix(side, up, forward);
-            const p1 = Matrix3_gl.vec3_multiply(rot, .{ .x = 1 }).added(point);
-            const p2 = Matrix3_gl.vec3_multiply(rot, .{ .y = 1 }).added(point);
-            const p3 = Matrix3_gl.vec3_multiply(rot, .{ .z = 1 }).added(point);
-            _ = p1.added(p2).added(p3);
-            if (false) {
-                self.debug.append(forward.added(point)) catch unreachable;
-                self.debug.append(side.added(point)) catch unreachable;
-                self.debug.append(up.added(point)) catch unreachable;
-            }
-            if (false) {
-                self.debug.append(p1) catch unreachable;
-                self.debug.append(p2) catch unreachable;
-                self.debug.append(p3) catch unreachable;
-            }
-        }
-        self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size, 20);
-        std.debug.assert(vine.points.items.len > 0);
-        std.debug.print("vine num points = {d}\n", .{vine.points.items.len});
-        var i: usize = 0;
+        var vine = Vine.init(self.allocator);
+        self.grow_vine(&vine, point, direction, sdf_fn, step_size, vine_length);
         // get length of current vine
         var total_len: glf = 0.0;
         {
-            i = 0;
+            var i: usize = 0;
             var len: glf = 0.0;
             while (i < vine.points.items.len - 1) : (i += 1) {
                 const p0 = vine.points.items[i].position;
@@ -122,12 +121,12 @@ pub const Vines = struct {
         }
         // set scale of each point;
         {
-            i = 0;
+            var i: usize = 0;
             var len: glf = 0.0;
             while (i < vine.points.items.len - 1) : (i += 1) {
                 const p0 = vine.points.items[i].position;
                 const p1 = vine.points.items[i + 1].position;
-                vine.points.items[i].scale = 1.0 - (len / total_len);
+                vine.points.items[i].scale = start_scale * (1.0 - (len / total_len));
                 len += Vector3_gl.distance(p0, p1);
             }
             vine.points.items[vine.points.items.len - 1].scale = 0.0;
@@ -274,7 +273,7 @@ pub const Vines = struct {
         }
     }
 
-    fn grow_vine(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, step_size: glf, vine_length: glf) void {
+    fn grow_vine(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf) void {
         _ = self;
         var pos = point;
         var dir = direction;
@@ -302,7 +301,7 @@ pub const Vines = struct {
             const forward = dir.normalized();
             const inside = helpers.sdf_gradient(pos, sdf_fn);
             var up = dir.crossed(inside).negated();
-            if (up.dotted(axis) < 0) up = up.negated();
+            // if (up.dotted(axis) < 0) up = up.negated();
             const rot = Matrix3_gl.rotation_matrix(inside, up, forward);
             const rad = STEP_MULTIPLIER * step_size;
             var a_neg: glf = undefined;
@@ -317,7 +316,10 @@ pub const Vines = struct {
                 }
             }
             for (angles) |a, j| {
-                if (j == angles.len - 1) unreachable; // couldn't find the angle pair
+                if (j == angles.len - 1) {
+                    std.debug.print("could not find angle pair\n", .{});
+                    return;
+                }
                 const p1 = helpers.xz_circle(a, rad).mat3_multiply(rot).added(pos);
                 const p2 = helpers.xz_circle(angles[j + 1], rad).mat3_multiply(rot).added(pos);
                 const d1 = sdf_fn(p1);

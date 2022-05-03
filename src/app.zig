@@ -122,6 +122,8 @@ pub fn sdf_cylinder(point: Vector3_gl, height: glf, radius: glf) glf {
     return min(max(d.x, d.y), 0.0) + d.maxed(0.0).lengthed();
 }
 
+var sdf_count: usize = 0;
+
 pub fn my_sdf(point: Vector3_gl) glf {
     var d = sdf_default_cube(point);
     var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .z = 1 }, std.math.pi / 2.0), 3.13, 0.125);
@@ -162,72 +164,21 @@ pub const App = struct {
 
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
+        sdf_count = 0;
         self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
+        sdf_count = 0;
         self.cube.align_normals(buffer_sdf);
         const start = std.time.milliTimestamp();
-        if (true) {
-            // cube
-            {
-                const point = Vector3_gl{ .z = -0.51, .y = 0.31, .x = -0.3 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
-                const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), my_sdf, axis, true, 1.0);
-            }
-            if (false) {
-                const point = Vector3_gl{ .x = -0.5, .y = 0.5, .z = -0.3 };
-                const dir = Vector3_gl{ .z = 1.0, .y = -0.1 };
-                const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), sdf_default_cube, axis, false);
-            }
+        // start vine growth
+        {
+            const point = Vector3_gl{ .z = -0.51, .y = 0.31, .x = -0.3 };
+            const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
+            sdf_count = 0;
+            self.vines.grow(point, dir.normalized(), my_sdf, 1.0, 20.0);
+            std.debug.print("grow called sdf {d} times\n", .{sdf_count});
         }
         const end = std.time.milliTimestamp();
         std.debug.print("vine growing took {d} ticks\n", .{end - start});
-        if (false) {
-            {
-                const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
-                const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
-                const axis = Vector3_gl{ .y = 1.0 };
-                self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, false, 0.2);
-            }
-            // {
-            //     const point = Vector3_gl{ .x = 0.0, .y = 0.5, .z = 0.0 };
-            //     const dir = Vector3_gl{ .z = -1.0, .y = -0.1 };
-            //     const axis = Vector3_gl{ .x = 1.0 };
-            //     self.vines.grow(point, dir.normalized(), sdf_default_sphere, axis, true);
-            // }
-            if (false) {
-                self.cube.generate_from_sdf(sdf_default_sphere, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 90.0, self.arena);
-                self.cube.align_normals(sdf_default_sphere);
-            }
-            if (false) {
-                const verts = [8]bool{
-                    //true, true, true, false, false, false, false, false,
-                    true, true, true, false, true, false, false, false,
-                };
-                const pos = [8]Vector3_gl{
-                    .{ .x = -0.5, .y = -0.5, .z = -0.5 },
-                    .{ .x = -0.5, .y = 0.5, .z = -0.5 },
-                    .{ .x = 0.5, .y = 0.5, .z = -0.5 },
-                    .{ .x = 0.5, .y = -0.5, .z = -0.5 },
-                    .{ .x = -0.5, .y = -0.5, .z = 0.5 },
-                    .{ .x = -0.5, .y = 0.5, .z = 0.5 },
-                    .{ .x = 0.5, .y = 0.5, .z = 0.5 },
-                    .{ .x = 0.5, .y = -0.5, .z = 0.5 },
-                };
-                for (verts) |v, i| {
-                    if (v) {
-                        const p = pos[i];
-                        var cube = Mesh.unit_cube(self.arena);
-                        defer cube.deinit();
-                        cube.set_position(p);
-                        cube.set_scalef(0.03);
-                        self.cube.append_mesh(&cube);
-                    }
-                }
-                var marched_cube = MarchedCube.init();
-                marched_cube.generate_mesh(pos, .{}, verts, &self.cube, self.arena);
-            }
-        }
         if (false) {
             // cubes at vine points
             for (self.vines.vines.items) |vine| {
