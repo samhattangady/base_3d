@@ -104,7 +104,7 @@ pub const Vines = struct {
                 self.debug.append(p3) catch unreachable;
             }
         }
-        self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size);
+        self.grow_vine(&vine, point, direction, sdf_fn, axis, step_size, 15);
         std.debug.assert(vine.points.items.len > 0);
         std.debug.print("vine num points = {d}\n", .{vine.points.items.len});
         var i: usize = 0;
@@ -274,9 +274,8 @@ pub const Vines = struct {
         }
     }
 
-    fn grow_vine(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, step_size: glf) void {
+    fn grow_vine(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, axis: Vector3_gl, step_size: glf, vine_length: glf) void {
         _ = self;
-        _ = axis;
         var pos = point;
         var dir = direction;
         // TODO (29 Apr 2022 sam): Rather than asserting, we should instead find
@@ -286,8 +285,8 @@ pub const Vines = struct {
         vine.points.append(.{ .position = point, .direction = direction, .axis = point_axis }) catch unreachable;
         var prng = std.rand.DefaultPrng.init(0);
         var rand = prng.random();
-        var i: usize = 0;
-        while (i < 150) : (i += 1) {
+        var length: glf = 0;
+        while (length < vine_length) {
             // first we find the points along a circle that lie along the plane
             // that we are travelling on that are STEP_MULTIPLIER * step_size from
             // the current position.
@@ -386,6 +385,7 @@ pub const Vines = struct {
             if (helpers.sdf_closest(nudged_pos, sdf_fn)) |closest| {
                 new_pos = closest;
             }
+            length += new_pos.distance_to(pos);
             dir = new_pos.subtracted(pos).normalized();
             pos = new_pos;
             vine.points.append(.{ .position = pos, .direction = dir, .axis = inside }) catch unreachable;
