@@ -49,6 +49,8 @@ pub const Vines = struct {
     allocator: std.mem.Allocator,
     arena: std.mem.Allocator,
     debug: std.ArrayList(Vector3_gl),
+    /// the last point rendered by regenerate mesh.
+    tip: Vector3_gl = .{},
     ticks: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
@@ -192,6 +194,9 @@ pub const Vines = struct {
             }
             if (current_points.items.len > 0)
                 self.generate_single_vine_mesh(current_points.items[0..]);
+            if (current_points.items.len > 0) {
+                self.tip = current_points.items[current_points.items.len - 1].position;
+            }
         }
     }
 
@@ -282,7 +287,7 @@ pub const Vines = struct {
         var prng = std.rand.DefaultPrng.init(0);
         var rand = prng.random();
         var i: usize = 0;
-        while (i < 150) : (i += 1) {
+        while (i < 368) : (i += 1) {
             // first we find the points along a circle that lie along the plane
             // that we are travelling on that are STEP_MULTIPLIER * step_size from
             // the current position.

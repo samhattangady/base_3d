@@ -24,6 +24,7 @@ const Mesh = helpers.Mesh;
 const MarchedCube = helpers.MarchedCube;
 const TYPING_BUFFER_SIZE = 16;
 const glf = c.GLfloat;
+const ANIM_TICKS_LENGTH = 20000;
 
 const InputKey = enum {
     shift,
@@ -132,6 +133,8 @@ pub const App = struct {
     cube: Mesh,
     inputs: InputState = .{},
     vines: Vines,
+    playing: bool = false,
+    amount: glf = 0,
     debug: c.GLint = 0,
 
     pub fn new(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
@@ -328,9 +331,9 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, ticks: u32, arena: std.mem.Allocator) void {
+        const delta = ticks - self.ticks;
         self.ticks = ticks;
         self.arena = arena;
-        self.debug = if (self.inputs.get_key(.space).is_down) 1 else 0;
         self.debug_ray_march();
         self.vines.update(ticks, arena);
         if (self.inputs.mouse.r_button.is_down) {
@@ -338,6 +341,26 @@ pub const App = struct {
             self.vines.regenerate_mesh(amount);
         }
         self.camera_controls();
+        if (self.inputs.get_key(.space).is_clicked) {
+            if (self.playing) {
+                self.playing = false;
+            } else {
+                self.amount = 0.0;
+                self.playing = true;
+            }
+        }
+        if (self.playing) {
+            const change = @intToFloat(glf, delta) / ANIM_TICKS_LENGTH;
+            self.amount += change;
+            if (self.amount > 1.0) {
+                self.amount = 1.0;
+                self.playing = false;
+            }
+            self.vines.regenerate_mesh(self.amount);
+            const dist = self.cam3d.position.distance_to(self.cam3d.target);
+            self.cam3d.position = self.vines.tip.subtracted(self.cam3d.target).normalized().scaled(dist);
+            self.cam3d.update_view();
+        }
     }
 
     pub fn camera_controls(self: *Self) void {
@@ -364,5 +387,6 @@ pub const App = struct {
 
     pub fn end_frame(self: *Self) void {
         self.inputs.mouse.reset_mouse();
+        self.inputs.reset();
     }
 };
