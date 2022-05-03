@@ -130,8 +130,18 @@ pub const Vines = struct {
             }
             vine.points.items[vine.points.items.len - 1].scale = 0.0;
         }
-        // TODO (03 May 2022 sam): Update axis of each point so that the
-        // transitions are smoother...
+        // Update axis of each point so that the transitions are smoother...
+        // TODO (03 May 2022 sam): Use a better approach for this, we want the
+        // axis to change smoothly, so we should probably have some kind of offset
+        // and then slowly resolve that instead of the way we're doing now...
+        {
+            for (vine.points.items) |*vp, j| {
+                if (j == 0 or j == vine.points.items.len - 1) continue;
+                const prev = vine.points.items[j - 1];
+                const next = vine.points.items[j + 1];
+                vp.axis = prev.axis.lerped(next.axis, 0.5).normalized();
+            }
+        }
         self.vines.append(vine) catch unreachable;
     }
 
