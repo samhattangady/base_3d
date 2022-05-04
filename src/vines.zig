@@ -20,6 +20,7 @@ const STEP_MULTIPLIER = 0.1;
 const BRANCH_NUM_POINTS = 20;
 const LEAF_LENGTH = 0.2;
 const LEAF_WIDTH = LEAF_LENGTH * 0.25;
+const LEAF_GROWTH_TIME = 0.1;
 
 const Leaf = struct {
     // point at which the leaf should start forming
@@ -235,13 +236,15 @@ pub const Vines = struct {
             }
         }
         for (self.leaves.items) |leaf| {
-            if (amount < (1.0 - leaf.start_scale)) continue;
+            const end_scale = leaf.start_scale - LEAF_GROWTH_TIME;
+            const leaf_growth = std.math.clamp(helpers.unlerpf(leaf.start_scale, end_scale, (1.0 - amount)), 0.0, 1.0);
+            if (leaf_growth == 0) continue;
             const p1 = leaf.position;
-            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH));
+            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH * leaf_growth));
             const mid = p1.lerped(p2, 0.5);
             const perp = leaf.direction.crossed(leaf.axis);
-            const p3 = mid.added(perp.scaled(LEAF_WIDTH));
-            const p4 = mid.added(perp.scaled(-LEAF_WIDTH));
+            const p3 = mid.added(perp.scaled(LEAF_WIDTH * leaf_growth));
+            const p4 = mid.added(perp.scaled(-LEAF_WIDTH * leaf_growth));
             const v1 = MeshVertex{ .position = p1, .normal = leaf.axis };
             const v2 = MeshVertex{ .position = p2, .normal = leaf.axis };
             const v3 = MeshVertex{ .position = p3, .normal = leaf.axis };
