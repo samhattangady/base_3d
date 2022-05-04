@@ -1045,6 +1045,10 @@ pub const Mesh = struct {
         self.vertices.deinit();
     }
 
+    pub fn clear(self: *Self) void {
+        self.vertices.clearRetainingCapacity();
+    }
+
     pub fn set_position(self: *Self, position: Vector3_gl) void {
         const offset = position.subtracted(self.position);
         if (offset.is_zero()) return;

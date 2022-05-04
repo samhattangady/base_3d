@@ -18,6 +18,16 @@ const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
 const STEP_MULTIPLIER = 0.1;
 const BRANCH_NUM_POINTS = 20;
+const LEAF_LENGTH = 0.2;
+const LEAF_WIDTH = LEAF_LENGTH * 0.25;
+
+const Leaf = struct {
+    // point at which the leaf should start forming
+    start_scale: glf,
+    position: Vector3_gl,
+    direction: Vector3_gl,
+    axis: Vector3_gl,
+};
 
 const VinePoint = struct {
     position: Vector3_gl,
@@ -30,11 +40,14 @@ const Vine = struct {
     const Self = @This();
     points: std.ArrayList(VinePoint),
     start_scale: glf = 1.0,
+    end_scale: glf = 0.0,
 
     /// axis about which the vine rotates while growing
-    pub fn init(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: std.mem.Allocator, start_scale: glf, end_scale: glf) Self {
         return Self{
             .points = std.ArrayList(VinePoint).init(allocator),
+            .start_scale = start_scale,
+            .end_scale = end_scale,
         };
     }
 
@@ -47,6 +60,7 @@ pub const Vines = struct {
     const Self = @This();
     mesh: Mesh,
     vines: std.ArrayList(Vine),
+    leaves: std.ArrayList(Leaf),
     allocator: std.mem.Allocator,
     arena: std.mem.Allocator,
     debug: std.ArrayList(Vector3_gl),
@@ -58,6 +72,7 @@ pub const Vines = struct {
         return .{
             .mesh = Mesh.init(allocator),
             .vines = std.ArrayList(Vine).init(allocator),
+            .leaves = std.ArrayList(Leaf).init(allocator),
             .debug = std.ArrayList(Vector3_gl).init(allocator),
             .allocator = allocator,
             .arena = arena,
@@ -68,6 +83,7 @@ pub const Vines = struct {
         self.mesh.deinit();
         for (self.vines.items) |*vine| vine.deinit();
         self.vines.deinit();
+        self.leaves.deinit();
         self.debug.deinit();
     }
 
@@ -77,36 +93,57 @@ pub const Vines = struct {
     }
 
     pub fn grow(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf) void {
-        self.grow_single_vine(point, direction, sdf_fn, step_size, vine_length, 1.0);
-        var branches = std.ArrayList([3]Vector3_gl).init(self.arena);
-        defer branches.deinit();
+        self.grow_single_vine(point, direction, sdf_fn, step_size, vine_length, 1.0, 0.0);
         var prng = std.rand.DefaultPrng.init(0);
         var rand = prng.random();
         const vine = self.vines.items[0];
-        var i: usize = BRANCH_NUM_POINTS;
-        var neg = false;
-        while (i < vine.points.items.len) : (i += BRANCH_NUM_POINTS) {
-            const vp = vine.points.items[i];
-            const pos = vp.position;
-            var angle = helpers.lerpf(std.math.pi / 6.0, std.math.pi / 5.0, rand.float(glf));
-            if (neg) angle *= -1.0;
-            neg = !neg;
-            const dir = vp.direction.rotated_about_point_axis(.{}, vp.axis, angle);
-            branches.append(.{ pos, dir, .{ .x = vp.scale } }) catch unreachable;
+        {
+            // TODO (03 May 2022 sam): What is the best branching behaviour?
+            var branches = std.ArrayList([3]Vector3_gl).init(self.arena);
+            defer branches.deinit();
+            var i: usize = BRANCH_NUM_POINTS;
+            var neg = false;
+            while (i < vine.points.items.len) : (i += BRANCH_NUM_POINTS) {
+                const vp = vine.points.items[i];
+                const pos = vp.position;
+                var angle = helpers.lerpf(std.math.pi / 6.0, std.math.pi / 5.0, rand.float(glf));
+                if (neg) angle *= -1.0;
+                neg = !neg;
+                const dir = vp.direction.rotated_about_point_axis(.{}, vp.axis, angle);
+                branches.append(.{ pos, dir, .{ .x = vp.scale } }) catch unreachable;
+            }
+            for (branches.items) |branch| {
+                const start_scale = branch[2].x;
+                const end_scale = std.math.max(0.0, start_scale - 0.02);
+                self.grow_single_vine(branch[0], branch[1], sdf_fn, step_size, vine_length * (start_scale - end_scale), start_scale, end_scale);
+                const vine_index = self.vines.items.len - 1;
+                self.add_leaves_to_vine(vine_index);
+            }
         }
-        for (branches.items) |branch| {
-            const scale = branch[2].x;
-            self.grow_single_vine(branch[0], branch[1], sdf_fn, step_size, vine_length * scale, scale);
+        std.debug.print("num_leaves = {d}\n", .{self.leaves.items.len});
+    }
+
+    fn add_leaves_to_vine(self: *Self, vine_index: usize) void {
+        const vine = &self.vines.items[vine_index];
+        {
+            const vp = vine.points.items[0];
+            const leaf = Leaf{ .position = vp.position, .direction = vp.axis, .axis = vp.direction, .start_scale = vp.scale };
+            self.leaves.append(leaf) catch unreachable;
+        }
+        {
+            const vp = vine.points.items[vine.points.items.len - 1];
+            const leaf = Leaf{ .position = vp.position, .direction = vp.axis, .axis = vp.direction, .start_scale = vp.scale };
+            self.leaves.append(leaf) catch unreachable;
         }
     }
 
-    fn grow_single_vine(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf, start_scale: glf) void {
+    fn grow_single_vine(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf, start_scale: glf, end_scale: glf) void {
         if (!helpers.sdf_check(sdf_fn(point))) {
             std.debug.print("dist from surface = {d}\n", .{sdf_fn(point)});
             unreachable; // the vine does not start at the sdf surface.
         }
-        var vine = Vine.init(self.allocator);
-        self.grow_vine(&vine, point, direction, sdf_fn, step_size, vine_length);
+        var vine = Vine.init(self.allocator, start_scale, end_scale);
+        self.simulate_vine_growth(&vine, point, direction, sdf_fn, step_size, vine_length);
         // get length of current vine
         var total_len: glf = 0.0;
         {
@@ -126,10 +163,10 @@ pub const Vines = struct {
             while (i < vine.points.items.len - 1) : (i += 1) {
                 const p0 = vine.points.items[i].position;
                 const p1 = vine.points.items[i + 1].position;
-                vine.points.items[i].scale = start_scale * (1.0 - (len / total_len));
+                vine.points.items[i].scale = helpers.lerpf(start_scale, end_scale, (len / total_len));
                 len += Vector3_gl.distance(p0, p1);
             }
-            vine.points.items[vine.points.items.len - 1].scale = 0.0;
+            vine.points.items[vine.points.items.len - 1].scale = end_scale;
         }
         // Update axis of each point so that the transitions are smoother...
         // TODO (03 May 2022 sam): Use a better approach for this, we want the
@@ -147,11 +184,10 @@ pub const Vines = struct {
     }
 
     pub fn regenerate_mesh(self: *Self, raw_amount: glf) void {
-        self.mesh.deinit();
-        self.mesh = Mesh.init(self.allocator);
-        if (raw_amount < 0) return;
-        const amount = std.math.clamp(raw_amount, 0.001, 1.0);
-        for (self.vines.items) |vine| {
+        self.mesh.clear();
+        if (raw_amount <= 0) return;
+        var amount = std.math.clamp(raw_amount, 0.001, 1.0);
+        for (self.vines.items) |vine, vine_index| {
             var last: usize = 0;
             // calculate all the points that are present in amount
             var current_points = std.ArrayList(VinePoint).init(self.arena);
@@ -163,8 +199,8 @@ pub const Vines = struct {
                 const progress = 1.0 - vp.scale;
                 if (progress < amount) {
                     var new_vp = vp;
-                    new_vp.scale = amount * vp.scale;
-                    // TODO (23 Apr 2022 sam): update point scale to match the progress
+                    const vine_scale = (vine.start_scale - vine.end_scale) * helpers.unlerpf(vine.end_scale, vine.start_scale, vp.scale);
+                    new_vp.scale = std.math.min(amount, (1.0 - vine.end_scale)) * vine_scale;
                     current_points.append(new_vp) catch unreachable;
                     need_lerped_point = true;
                 } else {
@@ -172,6 +208,7 @@ pub const Vines = struct {
                     break;
                 }
             }
+            if (last == vine.points.items.len - 1) need_lerped_point = false;
             if (false) std.debug.print("last_point_index = {d}\n", .{last});
             if (need_lerped_point) {
                 // generate a point that is at exactly progress = amount
@@ -193,9 +230,28 @@ pub const Vines = struct {
             }
             if (current_points.items.len > 0)
                 self.generate_single_vine_mesh(current_points.items[0..]);
-            if (current_points.items.len > 0) {
+            if (vine_index == 0 and current_points.items.len > 0) {
                 self.tip = current_points.items[current_points.items.len - 1].position;
             }
+        }
+        for (self.leaves.items) |leaf| {
+            if (amount < (1.0 - leaf.start_scale)) continue;
+            const p1 = leaf.position;
+            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH));
+            const mid = p1.lerped(p2, 0.5);
+            const perp = leaf.direction.crossed(leaf.axis);
+            const p3 = mid.added(perp.scaled(LEAF_WIDTH));
+            const p4 = mid.added(perp.scaled(-LEAF_WIDTH));
+            const v1 = MeshVertex{ .position = p1, .normal = leaf.axis };
+            const v2 = MeshVertex{ .position = p2, .normal = leaf.axis };
+            const v3 = MeshVertex{ .position = p3, .normal = leaf.axis };
+            const v4 = MeshVertex{ .position = p4, .normal = leaf.axis };
+            self.mesh.vertices.append(v1) catch unreachable;
+            self.mesh.vertices.append(v2) catch unreachable;
+            self.mesh.vertices.append(v3) catch unreachable;
+            self.mesh.vertices.append(v1) catch unreachable;
+            self.mesh.vertices.append(v4) catch unreachable;
+            self.mesh.vertices.append(v2) catch unreachable;
         }
     }
 
@@ -206,7 +262,7 @@ pub const Vines = struct {
         const NUM_EDGES = 7.0;
         const NUM_EDGESi = @floatToInt(usize, NUM_EDGES);
         for (points) |vp| {
-            const p1 = vp.position.added(vp.axis.scaled(0.005 + 0.08 * vp.scale));
+            const p1 = vp.position.added(vp.axis.scaled(0.005 + 0.02 * vp.scale));
             var angle: glf = 0.0;
             while (angle < helpers.TWO_PI) : (angle += helpers.TWO_PI / (NUM_EDGES - 1.0)) {
                 const p = p1.rotated_about_point_axis(vp.position, vp.direction, angle);
@@ -273,7 +329,7 @@ pub const Vines = struct {
         }
     }
 
-    fn grow_vine(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf) void {
+    fn simulate_vine_growth(self: *Self, vine: *Vine, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf) void {
         _ = self;
         var pos = point;
         var dir = direction;
@@ -292,8 +348,8 @@ pub const Vines = struct {
             // we find 4 points, and check whether the edge lies between them. we
             // assume that there is only one edge. We start at -135 deg so that we
             // dont accidentally go back the way that we came.
-            var angles = [4]glf{ 0, 0, 0, 0 };
-            const step: glf = 360.0 / 4.0;
+            var angles = [10]glf{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+            const step: glf = 360.0 / 10.0;
             for (angles) |*a, j| {
                 const deg: glf = -180 + (step / 2) + (step * @intToFloat(glf, j));
                 a.* = deg * std.math.pi / 180;
@@ -317,6 +373,7 @@ pub const Vines = struct {
             }
             for (angles) |a, j| {
                 if (j == angles.len - 1) {
+                    // TODO (04 May 2022 sam): Figure out why this could be the case.
                     std.debug.print("could not find angle pair\n", .{});
                     return;
                 }
@@ -384,9 +441,7 @@ pub const Vines = struct {
             const angle = helpers.lerpf(-std.math.pi / 8.0, std.math.pi / 8.0, rand.float(glf));
             const nudged_pos = new_pos.rotated_about_point_axis(pos, inside, angle);
             // This sometimes gives us an infinite loop, so it's an opt
-            if (helpers.sdf_closest(nudged_pos, sdf_fn)) |closest| {
-                new_pos = closest;
-            }
+            if (helpers.sdf_closest(nudged_pos, sdf_fn)) |closest| new_pos = closest;
             length += new_pos.distance_to(pos);
             dir = new_pos.subtracted(pos).normalized();
             pos = new_pos;

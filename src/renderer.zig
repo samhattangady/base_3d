@@ -68,6 +68,7 @@ pub const Renderer = struct {
     vbo: c.GLuint = 0,
     vbo3d: c.GLuint = 0,
     ebo: c.GLuint = 0,
+    leaf_shader: ShaderData,
     base_shader: ShaderData,
     text_shader: ShaderData,
     allocator: std.mem.Allocator,
@@ -91,6 +92,7 @@ pub const Renderer = struct {
             .gl_context = gl_context,
             .allocator = allocator,
             .base_shader = ShaderData.init(allocator),
+            .leaf_shader = ShaderData.init(allocator),
             .text_shader = ShaderData.init(allocator),
             .cam2d = cam2d,
             .cam3d = cam3d,
@@ -105,6 +107,7 @@ pub const Renderer = struct {
 
     pub fn deinit(self: *Self) void {
         self.base_shader.deinit();
+        self.leaf_shader.deinit();
         self.text_shader.deinit();
         c.SDL_DestroyWindow(self.window);
     }
@@ -316,6 +319,7 @@ pub const Renderer = struct {
 
     fn clear_buffers(self: *Self) void {
         self.base_shader.clear_buffers();
+        self.leaf_shader.clear_buffers();
         self.text_shader.clear_buffers();
         self.typesetter.reset();
         self.z_val = 0.999;

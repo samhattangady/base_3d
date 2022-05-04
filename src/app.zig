@@ -174,7 +174,7 @@ pub const App = struct {
             const point = Vector3_gl{ .z = -0.51, .y = 0.31, .x = -0.3 };
             const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
             sdf_count = 0;
-            self.vines.grow(point, dir.normalized(), my_sdf, 1.0, 20.0);
+            self.vines.grow(point, dir.normalized(), my_sdf, 1.0, 80.0);
             std.debug.print("grow called sdf {d} times\n", .{sdf_count});
         }
         const end = std.time.milliTimestamp();
@@ -302,6 +302,7 @@ pub const App = struct {
         self.vines.update(ticks, arena);
         if (self.inputs.mouse.r_button.is_down) {
             const amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
+            if (false) std.debug.print("amount = {d}\n", .{amount});
             self.vines.regenerate_mesh(amount);
         }
         self.camera_controls();
@@ -321,9 +322,11 @@ pub const App = struct {
                 self.playing = false;
             }
             self.vines.regenerate_mesh(self.amount);
-            const dist = self.cam3d.position.distance_to(self.cam3d.target);
-            self.cam3d.position = self.vines.tip.subtracted(self.cam3d.target).normalized().scaled(dist);
-            self.cam3d.update_view();
+            if (false) {
+                const dist = self.cam3d.position.distance_to(self.cam3d.target);
+                self.cam3d.position = self.vines.tip.subtracted(self.cam3d.target).normalized().scaled(dist);
+                self.cam3d.update_view();
+            }
         }
     }
 
