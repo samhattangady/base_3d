@@ -12,6 +12,7 @@ const Vector2 = helpers.Vector2;
 const Vector2_gl = helpers.Vector2_gl;
 const Vector3_gl = helpers.Vector3_gl;
 const Vector4_gl = helpers.Vector4_gl;
+const Matrix4_gl = helpers.Matrix4_gl;
 const Camera2D = helpers.Camera2D;
 const Camera3D = helpers.Camera3D;
 const Mesh = helpers.Mesh;
@@ -23,6 +24,16 @@ const VERTEX_BASE_FILE: [:0]const u8 = @embedFile("../data/shaders/vertex.glsl")
 const FRAGMENT_ALPHA_FILE: [:0]const u8 = @embedFile("../data/shaders/fragment_texalpha.glsl");
 const VERTEX_3D_BASE_FILE: [:0]const u8 = @embedFile("../data/shaders/vertex_3d.glsl");
 const FRAGMENT_3D_FILE: [:0]const u8 = @embedFile("../data/shaders/fragment_3d.glsl");
+const SHADOW_MAP_SIZE = 2096;
+
+const ShadowMap = struct {
+    fbo: c.GLuint = 0,
+    tex: c.GLuint = 0,
+    light_cam: Camera3D = Camera3D.new_light(),
+    proj: Matrix4_gl = .{},
+    // TODO (04 May 2022 sam): Add a shader in here as well to make the depth pass
+    // more efficient
+};
 
 const VertexData = struct {
     position: Vector3_gl = .{},
@@ -75,6 +86,7 @@ pub const Renderer = struct {
     typesetter: *TypeSetter,
     cam2d: *Camera2D,
     cam3d: *Camera3D,
+    shadow_map: ShadowMap = .{},
     z_val: f32 = 0.999,
 
     pub fn init(typesetter: *TypeSetter, cam2d: *Camera2D, cam3d: *Camera3D, allocator: std.mem.Allocator, window_title: []const u8) !Self {
@@ -101,6 +113,7 @@ pub const Renderer = struct {
         try self.init_gl();
         try self.init_main_texture();
         try self.init_text_renderer();
+        self.init_shadow_map();
         self.typesetter.free_texture_data();
         return self;
     }
@@ -137,6 +150,21 @@ pub const Renderer = struct {
         c.glVertexAttribPointer(1, 3, c.GL_FLOAT, c.GL_FALSE, @sizeOf(MeshVertex), @intToPtr(*const anyopaque, @offsetOf(MeshVertex, "normal")));
         c.glEnableVertexAttribArray(1);
         try self.init_shader_program(VERTEX_3D_BASE_FILE, FRAGMENT_3D_FILE, &self.base_shader);
+    }
+
+    fn init_shadow_map(self: *Self) void {
+        c.glGenFramebuffers(1, &self.shadow_map.fbo);
+        c.glGenTextures(1, &self.shadow_map.tex);
+        c.glBindTexture(c.GL_TEXTURE_2D, self.shadow_map.tex);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_DEPTH_COMPONENT, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, c.GL_DEPTH_COMPONENT, c.GL_FLOAT, c.NULL);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_REPEAT);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_REPEAT);
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.shadow_map.fbo);
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_DEPTH_ATTACHMENT, c.GL_TEXTURE_2D, self.shadow_map.tex, 0);
+        c.glDrawBuffer(c.GL_NONE);
+        c.glReadBuffer(c.GL_NONE);
     }
 
     fn init_shader_program(self: *Self, vertex_src: []const u8, fragment_src: []const u8, shader_prog: *ShaderData) !void {
@@ -220,14 +248,22 @@ pub const Renderer = struct {
     }
 
     pub fn render_app(self: *Self, ticks: u32, app: *App) void {
-        _ = app;
         self.ticks = ticks;
+        // draw to shadow buffer
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.shadow_map.fbo);
+        c.glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        c.glClear(c.GL_DEPTH_BUFFER_BIT);
+        self.draw_mesh(app, &app.cube, &self.shadow_map.light_cam);
+        self.draw_mesh(app, &app.vines.mesh, &self.shadow_map.light_cam);
+        if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, &self.shadow_map.light_cam);
+        // draw to screen
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+        c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
-        if (app.debug == 0) {
-            self.draw_mesh(app, &app.cube);
-        }
-        self.draw_mesh(app, &app.vines.mesh);
+        self.draw_mesh(app, &app.cube, self.cam3d);
+        self.draw_mesh(app, &app.vines.mesh, self.cam3d);
+        if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, self.cam3d);
         self.draw_buffers();
         c.SDL_GL_SwapWindow(self.window);
         self.clear_buffers();
@@ -239,10 +275,9 @@ pub const Renderer = struct {
         self.draw_shader_buffers(&self.text_shader);
     }
 
-    fn draw_mesh(self: *Self, app: *const App, mesh: *const Mesh) void {
+    fn draw_mesh(self: *Self, app: *const App, mesh: *const Mesh, camera: *Camera3D) void {
         if (mesh.vertices.items.len == 0) return;
         c.glUseProgram(self.base_shader.program);
-        c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glEnable(c.GL_BLEND);
         c.glEnable(c.GL_DEPTH_TEST);
         c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
@@ -256,12 +291,20 @@ pub const Renderer = struct {
         }
         {
             const uniform_location = c.glGetUniformLocation(self.base_shader.program, "view");
-            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.cam3d.view.pointer());
+            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, camera.view.pointer());
         }
         {
             const uniform_location = c.glGetUniformLocation(self.base_shader.program, "projection");
-            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.cam3d.projection.pointer());
+            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, camera.projection.pointer());
         }
+        {
+            const uniform_location = c.glGetUniformLocation(self.base_shader.program, "light_proj");
+            self.shadow_map.proj = Matrix4_gl.mat4_multiply(self.shadow_map.light_cam.projection, self.shadow_map.light_cam.view);
+            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.shadow_map.proj.pointer());
+        }
+        c.glActiveTexture(c.GL_TEXTURE1);
+        c.glBindTexture(c.GL_TEXTURE_2D, self.shadow_map.tex);
+        c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "shadow_map"), 1);
         c.glBindVertexArray(self.vao3d);
         c.glBindBuffer(c.GL_ARRAY_BUFFER, self.vbo3d);
         c.glBufferData(c.GL_ARRAY_BUFFER, @sizeOf(MeshVertex) * @intCast(c_longlong, mesh.vertices.items.len), &mesh.vertices.items[0], c.GL_DYNAMIC_DRAW);

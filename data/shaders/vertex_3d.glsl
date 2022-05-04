@@ -6,14 +6,18 @@ layout (location = 1) in vec3 normal;
 
 out vec4 vert_color;
 out vec2 vert_texCoord;
+out vec4 shadow_pos;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform mat4 light_proj;
 
 void main()
 {
-    gl_Position = projection * view * model * vec4(position, 1.0);
+    vec4 out_pos =  model * vec4(position, 1.0);
+    gl_Position = projection * view * out_pos;
+    shadow_pos = light_proj * out_pos;
     vec3 light = normalize(vec3(1.0, -16.0, -6.0));
     float l = (dot(light, normal) * 0.5) + 0.5;
     vert_color = vec4(vec3(l), 1.0);

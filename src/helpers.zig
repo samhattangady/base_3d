@@ -763,26 +763,58 @@ pub const Matrix4_gl = extern struct {
         };
     }
 
-    pub fn perspective_projection(angle: c.GLfloat, aspect_ratio: c.GLfloat, near: c.GLfloat, far: c.GLfloat) Self {
-        // https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix
-        // TODO (20 Apr 2022 sam): See if there is a zig version of tan...
-        const r = @floatCast(c.GLfloat, c.SDL_tan(angle / 2.0) * near);
+    pub fn orthogonal_projection(half_width: glf, aspect_ratio: glf, near: glf, far: glf) Self {
+        const r = half_width;
         const t = r / aspect_ratio;
         const n = near;
         const f = far;
         return Matrix4_gl.build(
+            // row 0
+            -1.0 / r,
+            0.0,
+            0.0,
+            0.0,
+            // row 1
+            0.0,
+            -1.0 / t,
+            0.0,
+            0.0,
+            // row 2
+            0.0,
+            0.0,
+            -2.0 / (f - n),
+            -((f + n) / (f - n)),
+            // row 3
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        );
+    }
+
+    pub fn perspective_projection(angle: c.GLfloat, aspect_ratio: c.GLfloat, near: c.GLfloat, far: c.GLfloat) Self {
+        // https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix
+        const r = @floatCast(c.GLfloat, std.math.tan(angle / 2.0) * near);
+        const t = r / aspect_ratio;
+        const n = near;
+        const f = far;
+        return Matrix4_gl.build(
+            // row 0
             -n / r, // xpos is to right
             0.0,
             0.0,
             0.0,
+            // row 1
             0.0,
             -n / t, // ypos is down
             0.0,
             0.0,
+            // row 2
             0.0,
             0.0,
             -((f + n) / (f - n)), // zpos is to inside
             -1.0,
+            // row 3
             0.0,
             0.0,
             -((2.0 * f * n) / (f - n)),
@@ -796,6 +828,31 @@ pub const Matrix4_gl = extern struct {
         const yaxis = Vector3_gl.normalize(Vector3_gl.cross(zaxis, xaxis));
         const result = Matrix4_gl.build(xaxis.x, yaxis.x, zaxis.x, 0.0, xaxis.y, yaxis.y, zaxis.y, 0.0, xaxis.z, yaxis.z, zaxis.z, 0.0, -Vector3_gl.dot(xaxis, eye), -Vector3_gl.dot(yaxis, eye), -Vector3_gl.dot(zaxis, eye), 1.0);
         return result;
+    }
+
+    pub fn mat4_multiply(a: Self, b: Self) Self {
+        return Self.build(
+            // row 0
+            (a.r0.x * b.r0.x) + (a.r0.y * b.r1.x) + (a.r0.z * b.r2.x) + (a.r0.w * b.r3.x),
+            (a.r0.x * b.r0.y) + (a.r0.y * b.r1.y) + (a.r0.z * b.r2.y) + (a.r0.w * b.r3.y),
+            (a.r0.x * b.r0.z) + (a.r0.y * b.r1.z) + (a.r0.z * b.r2.z) + (a.r0.w * b.r3.z),
+            (a.r0.x * b.r0.w) + (a.r0.y * b.r1.w) + (a.r0.z * b.r2.w) + (a.r0.w * b.r3.w),
+            // row 1
+            (a.r1.x * b.r0.x) + (a.r1.y * b.r1.x) + (a.r1.z * b.r2.x) + (a.r1.w * b.r3.x),
+            (a.r1.x * b.r0.y) + (a.r1.y * b.r1.y) + (a.r1.z * b.r2.y) + (a.r1.w * b.r3.y),
+            (a.r1.x * b.r0.z) + (a.r1.y * b.r1.z) + (a.r1.z * b.r2.z) + (a.r1.w * b.r3.z),
+            (a.r1.x * b.r0.w) + (a.r1.y * b.r1.w) + (a.r1.z * b.r2.w) + (a.r1.w * b.r3.w),
+            // row 2
+            (a.r2.x * b.r0.x) + (a.r2.y * b.r1.x) + (a.r2.z * b.r2.x) + (a.r2.w * b.r3.x),
+            (a.r2.x * b.r0.y) + (a.r2.y * b.r1.y) + (a.r2.z * b.r2.y) + (a.r2.w * b.r3.y),
+            (a.r2.x * b.r0.z) + (a.r2.y * b.r1.z) + (a.r2.z * b.r2.z) + (a.r2.w * b.r3.z),
+            (a.r2.x * b.r0.w) + (a.r2.y * b.r1.w) + (a.r2.z * b.r2.w) + (a.r2.w * b.r3.w),
+            // row 3
+            (a.r3.x * b.r0.x) + (a.r3.y * b.r1.x) + (a.r3.z * b.r2.x) + (a.r3.w * b.r3.x),
+            (a.r3.x * b.r0.y) + (a.r3.y * b.r1.y) + (a.r3.z * b.r2.y) + (a.r3.w * b.r3.y),
+            (a.r3.x * b.r0.z) + (a.r3.y * b.r1.z) + (a.r3.z * b.r2.z) + (a.r3.w * b.r3.z),
+            (a.r3.x * b.r0.w) + (a.r3.y * b.r1.w) + (a.r3.z * b.r2.w) + (a.r3.w * b.r3.w),
+        );
     }
 };
 
@@ -1005,6 +1062,15 @@ pub const Camera3D = struct {
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
             .projection = Matrix4_gl.perspective_projection(std.math.pi / 4.0, (16.0 / 9.0), 1.0, 5000),
+        };
+    }
+
+    pub fn new_light() Self {
+        const pos = Vector3_gl{ .x = 1.0, .y = -16.0, .z = -6.0 };
+        return .{
+            .position = pos,
+            .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
+            .projection = Matrix4_gl.orthogonal_projection(0.1, 1.0, 1.0, 5000),
         };
     }
 

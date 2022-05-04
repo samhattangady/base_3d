@@ -43,6 +43,7 @@ const InputMap = struct {
 const INPUT_MAPPING = [_]InputMap{
     .{ .key = c.SDLK_LSHIFT, .input = .shift },
     .{ .key = c.SDLK_LCTRL, .input = .ctrl },
+    .{ .key = c.SDLK_RCTRL, .input = .ctrl },
     .{ .key = c.SDLK_TAB, .input = .tab },
     .{ .key = c.SDLK_RETURN, .input = .enter },
     .{ .key = c.SDLK_SPACE, .input = .space },
@@ -129,7 +130,10 @@ pub fn my_sdf(point: Vector3_gl) glf {
     var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .z = 1 }, std.math.pi / 2.0), 3.13, 0.125);
     d = smooth_sub(d2, d, 0.1);
     d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.3);
-    return smooth_add(d, d2, 0.3);
+    d = smooth_add(d, d2, 0.3);
+    d2 = sdf_sphere(point, .{ .y = -1.0 }, 0.3);
+    d = smooth_add(d, d2, 0.3);
+    return d;
 }
 
 pub fn buffer_sdf(point: Vector3_gl) glf {
@@ -151,6 +155,7 @@ pub const App = struct {
     playing: bool = false,
     amount: glf = 0,
     debug: c.GLint = 0,
+    hide_leaves: bool = false,
 
     pub fn new(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return Self{
@@ -301,6 +306,7 @@ pub const App = struct {
         self.debug_ray_march();
         self.vines.update(ticks, arena);
         self.debug = if (self.inputs.get_key(.shift).is_down) 1 else 0;
+        self.hide_leaves = self.inputs.get_key(.tab).is_down;
         if (self.inputs.mouse.r_button.is_down) {
             const amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
             if (false) std.debug.print("amount = {d}\n", .{amount});

@@ -5,11 +5,13 @@
     [ ] Limit max thickness of vine
 [ ] Convert 3d models to sdf
 [ ] Add leaves - geometry shader?
-[ ] leaves growth
 [ ] leaves falling
 [ ] color for vines
 [ ] color for leaves
 [ ] "occlusion" / effects for object near vines.
+[ ] add movement to leaves
+[ ] twisting of vines like whomping willow
+[ ] shadows and shadow maps
 ---
 [x] Fix winding algorithm to work with all shapes
 [x] Render the sdf
@@ -18,6 +20,7 @@
     - didn't work. 
 [x] Add randomness to vine growth algorithm
 [x] Add branching
+[x] leaves growth
 ---
 [ ] Why does gvim on linux not work correctly with autoformat zig?
     But vim in terminal does...

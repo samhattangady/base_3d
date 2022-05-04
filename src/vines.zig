@@ -17,13 +17,18 @@ const MeshVertex = helpers.MeshVertex;
 const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
 const STEP_MULTIPLIER = 0.1;
-const BRANCH_NUM_POINTS = 20;
+const BRANCH_PROB = 0.05;
+const FIRST_BRANCH = 20;
 // fraction of the total that the branch will be.
 const BRANCH_LENGTH = 0.06;
-const LEAF_NUM_POINTS = 2;
+const LEAF_PROB = 0.7;
 const LEAF_LENGTH = 0.2;
 const LEAF_WIDTH = LEAF_LENGTH * 0.25;
-const LEAF_GROWTH_TIME = 0.01;
+const LEAF_GROWTH_TIME = 0.04;
+
+comptime {
+    std.debug.assert(LEAF_PROB <= 1.0);
+}
 
 const Leaf = struct {
     // point at which the leaf should start forming
@@ -63,6 +68,7 @@ const Vine = struct {
 pub const Vines = struct {
     const Self = @This();
     mesh: Mesh,
+    leaf_mesh: Mesh,
     vines: std.ArrayList(Vine),
     leaves: std.ArrayList(Leaf),
     allocator: std.mem.Allocator,
@@ -75,6 +81,7 @@ pub const Vines = struct {
     pub fn init(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return .{
             .mesh = Mesh.init(allocator),
+            .leaf_mesh = Mesh.init(allocator),
             .vines = std.ArrayList(Vine).init(allocator),
             .leaves = std.ArrayList(Leaf).init(allocator),
             .debug = std.ArrayList(Vector3_gl).init(allocator),
@@ -85,6 +92,7 @@ pub const Vines = struct {
 
     pub fn deinit(self: *Self) void {
         self.mesh.deinit();
+        self.leaf_mesh.deinit();
         for (self.vines.items) |*vine| vine.deinit();
         self.vines.deinit();
         self.leaves.deinit();
@@ -105,10 +113,10 @@ pub const Vines = struct {
             // TODO (03 May 2022 sam): What is the best branching behaviour?
             var branches = std.ArrayList([3]Vector3_gl).init(self.arena);
             defer branches.deinit();
-            var i: usize = BRANCH_NUM_POINTS;
             var neg = false;
-            while (i < vine.points.items.len) : (i += BRANCH_NUM_POINTS) {
-                const vp = vine.points.items[i];
+            for (vine.points.items) |vp, vp_index| {
+                if (vp_index < FIRST_BRANCH) continue;
+                if (rand.float(glf) > BRANCH_PROB) continue;
                 const pos = vp.position;
                 var angle = helpers.lerpf(std.math.pi / 6.0, std.math.pi / 5.0, rand.float(glf));
                 if (neg) angle *= -1.0;
@@ -121,18 +129,17 @@ pub const Vines = struct {
                 const end_scale = std.math.max(0.0, start_scale - BRANCH_LENGTH);
                 self.grow_single_vine(branch[0], branch[1], sdf_fn, step_size, vine_length * (start_scale - end_scale), start_scale, end_scale);
                 const vine_index = self.vines.items.len - 1;
-                self.add_leaves_to_vine(vine_index);
+                self.add_leaves_to_vine(vine_index, rand);
             }
         }
         std.debug.print("num_leaves = {d}\n", .{self.leaves.items.len});
     }
 
-    fn add_leaves_to_vine(self: *Self, vine_index: usize) void {
+    fn add_leaves_to_vine(self: *Self, vine_index: usize, rand: std.rand.Random) void {
         const vine = &self.vines.items[vine_index];
-        var i: usize = 0;
         var angle: glf = 0.0;
-        while (i < vine.points.items.len) : (i += LEAF_NUM_POINTS) {
-            const vp = vine.points.items[i];
+        for (vine.points.items) |vp| {
+            if (rand.float(glf) > LEAF_PROB) continue;
             const direction = vp.axis.rotated_about_point_axis(vp.position, vp.direction, angle).lerped(vp.direction, 0.3).normalized();
             const axis = direction.crossed(vp.axis).normalized();
             // fibonacci angle
@@ -202,6 +209,7 @@ pub const Vines = struct {
 
     pub fn regenerate_mesh(self: *Self, raw_amount: glf) void {
         self.mesh.clear();
+        self.leaf_mesh.clear();
         if (raw_amount <= 0) return;
         var amount = std.math.clamp(raw_amount, 0.001, 1.0);
         for (self.vines.items) |vine, vine_index| {
@@ -270,12 +278,12 @@ pub const Vines = struct {
             const v2 = MeshVertex{ .position = p2, .normal = leaf.axis.lerped(mid.subtracted(p2).normalized(), 0.3).normalized() };
             const v3 = MeshVertex{ .position = p3, .normal = leaf.axis.lerped(mid.subtracted(p3).normalized(), 0.3).normalized() };
             const v4 = MeshVertex{ .position = p4, .normal = leaf.axis.lerped(mid.subtracted(p4).normalized(), 0.3).normalized() };
-            self.mesh.vertices.append(v1) catch unreachable;
-            self.mesh.vertices.append(v2) catch unreachable;
-            self.mesh.vertices.append(v3) catch unreachable;
-            self.mesh.vertices.append(v1) catch unreachable;
-            self.mesh.vertices.append(v4) catch unreachable;
-            self.mesh.vertices.append(v2) catch unreachable;
+            self.leaf_mesh.vertices.append(v1) catch unreachable;
+            self.leaf_mesh.vertices.append(v2) catch unreachable;
+            self.leaf_mesh.vertices.append(v3) catch unreachable;
+            self.leaf_mesh.vertices.append(v1) catch unreachable;
+            self.leaf_mesh.vertices.append(v4) catch unreachable;
+            self.leaf_mesh.vertices.append(v2) catch unreachable;
         }
     }
 
