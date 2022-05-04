@@ -18,9 +18,12 @@ const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
 const STEP_MULTIPLIER = 0.1;
 const BRANCH_NUM_POINTS = 20;
+// fraction of the total that the branch will be.
+const BRANCH_LENGTH = 0.06;
+const LEAF_NUM_POINTS = 2;
 const LEAF_LENGTH = 0.2;
 const LEAF_WIDTH = LEAF_LENGTH * 0.25;
-const LEAF_GROWTH_TIME = 0.1;
+const LEAF_GROWTH_TIME = 0.01;
 
 const Leaf = struct {
     // point at which the leaf should start forming
@@ -115,7 +118,7 @@ pub const Vines = struct {
             }
             for (branches.items) |branch| {
                 const start_scale = branch[2].x;
-                const end_scale = std.math.max(0.0, start_scale - 0.02);
+                const end_scale = std.math.max(0.0, start_scale - BRANCH_LENGTH);
                 self.grow_single_vine(branch[0], branch[1], sdf_fn, step_size, vine_length * (start_scale - end_scale), start_scale, end_scale);
                 const vine_index = self.vines.items.len - 1;
                 self.add_leaves_to_vine(vine_index);
@@ -126,25 +129,38 @@ pub const Vines = struct {
 
     fn add_leaves_to_vine(self: *Self, vine_index: usize) void {
         const vine = &self.vines.items[vine_index];
-        {
-            const vp = vine.points.items[0];
-            const leaf = Leaf{ .position = vp.position, .direction = vp.axis, .axis = vp.direction, .start_scale = vp.scale };
-            self.leaves.append(leaf) catch unreachable;
-        }
-        {
-            const vp = vine.points.items[vine.points.items.len - 1];
-            const leaf = Leaf{ .position = vp.position, .direction = vp.axis, .axis = vp.direction, .start_scale = vp.scale };
+        var i: usize = 0;
+        var angle: glf = 0.0;
+        while (i < vine.points.items.len) : (i += LEAF_NUM_POINTS) {
+            const vp = vine.points.items[i];
+            const direction = vp.axis.rotated_about_point_axis(vp.position, vp.direction, angle).lerped(vp.direction, 0.3).normalized();
+            const axis = direction.crossed(vp.axis).normalized();
+            // fibonacci angle
+            angle += 137.5 / 180.0 * std.math.pi;
+            const leaf = Leaf{ .position = vp.position, .direction = direction, .axis = axis, .start_scale = vp.scale };
             self.leaves.append(leaf) catch unreachable;
         }
     }
 
     fn grow_single_vine(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf, start_scale: glf, end_scale: glf) void {
-        if (!helpers.sdf_check(sdf_fn(point))) {
-            std.debug.print("dist from surface = {d}\n", .{sdf_fn(point)});
-            unreachable; // the vine does not start at the sdf surface.
-        }
+        var pos = point;
+        var dir = direction;
         var vine = Vine.init(self.allocator, start_scale, end_scale);
-        self.simulate_vine_growth(&vine, point, direction, sdf_fn, step_size, vine_length);
+        if (!helpers.sdf_check(sdf_fn(point))) {
+            if (helpers.sdf_along_direction(pos, dir, sdf_fn)) |p| {
+                // TODO (04 May 2022 sam): Don't just add a straight line here.
+                // create some amount of jitter as the vine moves towards the
+                // connection point
+                vine.points.append(.{ .position = point, .direction = direction, .axis = direction.crossed(.{ .z = 1 }).normalized() }) catch unreachable;
+                pos = p;
+                const inside = helpers.sdf_gradient(pos, sdf_fn);
+                const perp = inside.crossed(direction).normalized();
+                dir = perp.crossed(inside).normalized();
+            } else {
+                unreachable; // the vine does not approach surface.
+            }
+        }
+        self.simulate_vine_growth(&vine, pos, dir, sdf_fn, step_size, vine_length);
         // get length of current vine
         var total_len: glf = 0.0;
         {
@@ -236,19 +252,24 @@ pub const Vines = struct {
             }
         }
         for (self.leaves.items) |leaf| {
+            // TODO (04 May 2022 sam): Does this handle the last few leaves that
+            // that are near scale = 0 correctly?
+            // TODO (04 May 2022 sam): We want leaves that are viewed from above to
+            // have different normals from below.
             const end_scale = leaf.start_scale - LEAF_GROWTH_TIME;
-            const leaf_growth = std.math.clamp(helpers.unlerpf(leaf.start_scale, end_scale, (1.0 - amount)), 0.0, 1.0);
+            var leaf_growth = std.math.clamp(helpers.unlerpf(leaf.start_scale, end_scale, (1.0 - amount)), 0.0, 1.0);
+            leaf_growth = helpers.easeinoutf(0.0, 1.0, leaf_growth);
             if (leaf_growth == 0) continue;
             const p1 = leaf.position;
-            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH * leaf_growth));
-            const mid = p1.lerped(p2, 0.5);
+            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH * leaf_growth)).added(leaf.axis.scaled(LEAF_LENGTH * 0.1 * leaf_growth));
+            const mid = p1.added(leaf.direction.scaled(LEAF_LENGTH * 0.5 * leaf_growth));
             const perp = leaf.direction.crossed(leaf.axis);
             const p3 = mid.added(perp.scaled(LEAF_WIDTH * leaf_growth));
             const p4 = mid.added(perp.scaled(-LEAF_WIDTH * leaf_growth));
-            const v1 = MeshVertex{ .position = p1, .normal = leaf.axis };
-            const v2 = MeshVertex{ .position = p2, .normal = leaf.axis };
-            const v3 = MeshVertex{ .position = p3, .normal = leaf.axis };
-            const v4 = MeshVertex{ .position = p4, .normal = leaf.axis };
+            const v1 = MeshVertex{ .position = p1, .normal = leaf.axis.lerped(mid.subtracted(p1).normalized(), 0.3).normalized() };
+            const v2 = MeshVertex{ .position = p2, .normal = leaf.axis.lerped(mid.subtracted(p2).normalized(), 0.3).normalized() };
+            const v3 = MeshVertex{ .position = p3, .normal = leaf.axis.lerped(mid.subtracted(p3).normalized(), 0.3).normalized() };
+            const v4 = MeshVertex{ .position = p4, .normal = leaf.axis.lerped(mid.subtracted(p4).normalized(), 0.3).normalized() };
             self.mesh.vertices.append(v1) catch unreachable;
             self.mesh.vertices.append(v2) catch unreachable;
             self.mesh.vertices.append(v3) catch unreachable;
@@ -359,8 +380,7 @@ pub const Vines = struct {
             }
             const forward = dir.normalized();
             const inside = helpers.sdf_gradient(pos, sdf_fn);
-            var up = dir.crossed(inside).negated();
-            // if (up.dotted(axis) < 0) up = up.negated();
+            const up = dir.crossed(inside);
             const rot = Matrix3_gl.rotation_matrix(inside, up, forward);
             const rad = STEP_MULTIPLIER * step_size;
             var a_neg: glf = undefined;

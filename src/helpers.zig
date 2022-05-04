@@ -1676,6 +1676,16 @@ pub fn sdf_closest(point: Vector3_gl, sdf: fn (Vector3_gl) glf) ?Vector3_gl {
     return pos;
 }
 
+pub fn sdf_along_direction(point: Vector3_gl, direction: Vector3_gl, sdf: fn (Vector3_gl) glf) ?Vector3_gl {
+    var pos = point;
+    while (!sdf_check(sdf(pos))) {
+        const dist = sdf(pos);
+        pos = pos.added(direction.scaled(dist));
+        if (dist > 1000) return null;
+    }
+    return pos;
+}
+
 /// returns a point along the xz plane that is at angle a from z+ve axis
 pub fn xz_circle(a: glf, radius: glf) Vector3_gl {
     return .{

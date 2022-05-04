@@ -171,8 +171,8 @@ pub const App = struct {
         const start = std.time.milliTimestamp();
         // start vine growth
         {
-            const point = Vector3_gl{ .z = -0.51, .y = 0.31, .x = -0.3 };
-            const dir = Vector3_gl{ .x = 1.0, .y = -0.3 };
+            const point = Vector3_gl{ .y = 1.31 };
+            const dir = Vector3_gl{ .y = -1, .x = 0.02 };
             sdf_count = 0;
             self.vines.grow(point, dir.normalized(), my_sdf, 1.0, 80.0);
             std.debug.print("grow called sdf {d} times\n", .{sdf_count});
@@ -300,6 +300,7 @@ pub const App = struct {
         self.arena = arena;
         self.debug_ray_march();
         self.vines.update(ticks, arena);
+        self.debug = if (self.inputs.get_key(.shift).is_down) 1 else 0;
         if (self.inputs.mouse.r_button.is_down) {
             const amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
             if (false) std.debug.print("amount = {d}\n", .{amount});
