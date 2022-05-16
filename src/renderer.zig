@@ -204,6 +204,8 @@ pub const Renderer = struct {
 
     /// This currently only generates a circle texture that we can use to draw filled circles.
     fn init_main_texture(self: *Self) !void {
+        if (true) return;
+        if (true) unreachable; // check ig we are using this things.
         const temp_bitmap = try self.allocator.alloc(u8, CIRCLE_TEXTURE_SIZE * CIRCLE_TEXTURE_SIZE);
         defer self.allocator.free(temp_bitmap);
         // The circle texture leaves one pixel at 0,0 as filled, so all other fills can use that
@@ -253,17 +255,17 @@ pub const Renderer = struct {
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.shadow_map.fbo);
         c.glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
         c.glClear(c.GL_DEPTH_BUFFER_BIT);
-        self.draw_mesh(app, &app.cube, &self.shadow_map.light_cam);
-        self.draw_mesh(app, &app.vines.mesh, &self.shadow_map.light_cam);
-        if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, &self.shadow_map.light_cam);
+        self.draw_mesh(app, &app.cube, &self.shadow_map.light_cam, false);
+        self.draw_mesh(app, &app.vines.mesh, &self.shadow_map.light_cam, false);
+        if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, &self.shadow_map.light_cam, false);
         // draw to screen
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
-        self.draw_mesh(app, &app.cube, self.cam3d);
-        self.draw_mesh(app, &app.vines.mesh, self.cam3d);
-        if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, self.cam3d);
+        self.draw_mesh(app, &app.cube, self.cam3d, true);
+        self.draw_mesh(app, &app.vines.mesh, self.cam3d, true);
+        if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, self.cam3d, true);
         self.draw_buffers();
         c.SDL_GL_SwapWindow(self.window);
         self.clear_buffers();
@@ -275,16 +277,15 @@ pub const Renderer = struct {
         self.draw_shader_buffers(&self.text_shader);
     }
 
-    fn draw_mesh(self: *Self, app: *const App, mesh: *const Mesh, camera: *Camera3D) void {
+    fn draw_mesh(self: *Self, app: *const App, mesh: *const Mesh, camera: *Camera3D, shadows: bool) void {
         if (mesh.vertices.items.len == 0) return;
         c.glUseProgram(self.base_shader.program);
+        c.glBindVertexArray(self.vao3d);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.vbo3d);
         c.glEnable(c.GL_BLEND);
         c.glEnable(c.GL_DEPTH_TEST);
         c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
-        c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "tex"), 0);
         c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "debug"), app.debug);
-        c.glActiveTexture(c.GL_TEXTURE0);
-        c.glBindTexture(c.GL_TEXTURE_2D, self.base_shader.texture);
         {
             const uniform_location = c.glGetUniformLocation(self.base_shader.program, "model");
             c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, mesh.model.pointer());
@@ -298,15 +299,18 @@ pub const Renderer = struct {
             c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, camera.projection.pointer());
         }
         {
-            const uniform_location = c.glGetUniformLocation(self.base_shader.program, "light_proj");
-            self.shadow_map.proj = Matrix4_gl.mat4_multiply(self.shadow_map.light_cam.projection, self.shadow_map.light_cam.view);
-            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.shadow_map.proj.pointer());
+            const uniform_location = c.glGetUniformLocation(self.base_shader.program, "light_view");
+            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.shadow_map.light_cam.view.pointer());
         }
-        c.glActiveTexture(c.GL_TEXTURE1);
-        c.glBindTexture(c.GL_TEXTURE_2D, self.shadow_map.tex);
-        c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "shadow_map"), 1);
-        c.glBindVertexArray(self.vao3d);
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.vbo3d);
+        {
+            const uniform_location = c.glGetUniformLocation(self.base_shader.program, "light_proj");
+            c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.shadow_map.light_cam.projection.pointer());
+        }
+        if (shadows) {
+            c.glActiveTexture(c.GL_TEXTURE0);
+            c.glBindTexture(c.GL_TEXTURE_2D, self.shadow_map.tex);
+            c.glUniform1i(c.glGetUniformLocation(self.base_shader.program, "shadow_map"), 0);
+        }
         c.glBufferData(c.GL_ARRAY_BUFFER, @sizeOf(MeshVertex) * @intCast(c_longlong, mesh.vertices.items.len), &mesh.vertices.items[0], c.GL_DYNAMIC_DRAW);
         c.glDrawArrays(c.GL_TRIANGLES, @intCast(c.GLint, 0), @intCast(c.GLsizei, mesh.vertices.items.len));
     }

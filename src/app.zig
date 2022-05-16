@@ -131,8 +131,6 @@ pub fn my_sdf(point: Vector3_gl) glf {
     d = smooth_sub(d2, d, 0.1);
     d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.3);
     d = smooth_add(d, d2, 0.3);
-    d2 = sdf_sphere(point, .{ .y = -1.0 }, 0.3);
-    d = smooth_add(d, d2, 0.3);
     return d;
 }
 

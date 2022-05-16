@@ -1070,7 +1070,7 @@ pub const Camera3D = struct {
         return .{
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
-            .projection = Matrix4_gl.orthogonal_projection(0.1, 1.0, 1.0, 5000),
+            .projection = Matrix4_gl.orthogonal_projection(0.1, 1.0, 1.0, 5),
         };
     }
 

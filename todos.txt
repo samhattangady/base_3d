@@ -9,7 +9,7 @@
 [ ] color for vines
 [ ] color for leaves
 [ ] "occlusion" / effects for object near vines.
-[ ] add movement to leaves
+[ ] add motion to leaves
 [ ] twisting of vines like whomping willow
 [ ] shadows and shadow maps
 ---

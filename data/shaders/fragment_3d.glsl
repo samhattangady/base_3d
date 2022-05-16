@@ -6,7 +6,6 @@ in vec4 vert_color;
 in vec2 vert_texCoord;
 in vec4 shadow_pos;
 
-uniform sampler2D tex;
 uniform sampler2D shadow_map;
 uniform int debug;
 
@@ -19,13 +18,26 @@ float shadow_calculation(vec4 pos) {
     float shadow_depth = texture(shadow_map, tex_coord).r;
     float depth = pos.z / pos.w;
     depth = 0.5 + (depth * 0.5);
-    float shadow = depth > shadow_depth ? 1.0 : 0.0;
+    float bias = 0.00005;
+    float shadow = depth - bias > shadow_depth ? 1.0 : 0.0;
     return shadow;
 }
 
 void main() {
     vec4 col = vec4(0.65, 0.5, 0.7, 1.0);
-    float in_shade = shadow_calculation(shadow_pos);
+    // TODO (16 May 2022 sam): Should this be passed as uniform?
+    float texel_size = 1.0 / 2096.0;
+    float shadow = 0.0;
+    for(int x = -3; x <= 3; ++x)
+    {
+        for(int y = -3; y <= 3; ++y)
+        {
+            vec4 new_pos = vec4(shadow_pos.xy + (vec2(x,y) * texel_size), shadow_pos.zw);
+            shadow += shadow_calculation(new_pos);        
+        }    
+    }
+    shadow /= 49.0;
     frag_color = mix(col, vert_color, 0.1);
-    frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), in_shade * 0.4);
+    frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), shadow * 0.4);
 } 
+
