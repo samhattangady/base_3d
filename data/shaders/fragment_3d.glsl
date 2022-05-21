@@ -3,11 +3,13 @@
 layout(location = 0) out vec4 frag_color;
 
 in vec4 vert_color;
+in vec4 vert_shadow;
 in vec2 vert_texCoord;
 in vec4 shadow_pos;
 
 uniform sampler2D shadow_map;
 uniform int debug;
+uniform vec4 color;
 
 float shadow_calculation(vec4 pos) {
     vec2 tex_coord = pos.xy / pos.w;
@@ -24,7 +26,7 @@ float shadow_calculation(vec4 pos) {
 }
 
 void main() {
-    vec4 col = vec4(0.65, 0.5, 0.7, 1.0);
+    vec4 col = vert_color;
     // TODO (16 May 2022 sam): Should this be passed as uniform?
     float texel_size = 1.0 / 2096.0;
     float shadow = 0.0;
@@ -37,7 +39,7 @@ void main() {
         }    
     }
     shadow /= 49.0;
-    frag_color = mix(col, vert_color, 0.1);
-    frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), shadow * 0.4);
+    frag_color = mix(col, vec4(0.0, 0.0, 0.0, 1.0), vert_shadow * 0.1);
+    frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), shadow * 0.2);
 } 
 

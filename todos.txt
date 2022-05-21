@@ -6,8 +6,6 @@
 [ ] Convert 3d models to sdf
 [ ] Add leaves - geometry shader?
 [ ] leaves falling
-[ ] color for vines
-[ ] color for leaves
 [ ] "occlusion" / effects for object near vines.
 [ ] add motion to leaves
 [ ] twisting of vines like whomping willow
@@ -21,6 +19,8 @@
 [x] Add randomness to vine growth algorithm
 [x] Add branching
 [x] leaves growth
+[x] color for vines
+[x] color for leaves
 ---
 [ ] Why does gvim on linux not work correctly with autoformat zig?
     But vim in terminal does...

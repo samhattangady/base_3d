@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @import("c.zig");
 
 const constants = @import("constants.zig");
+const perlin = @import("noise.zig");
 pub const PI = std.math.pi;
 pub const HALF_PI = PI / 2.0;
 pub const TWO_PI = PI * 2.0;
@@ -1066,7 +1067,7 @@ pub const Camera3D = struct {
     }
 
     pub fn new_light() Self {
-        const pos = Vector3_gl{ .x = 1.0, .y = -16.0, .z = -6.0 };
+        const pos = Vector3_gl{ .x = 4.22777795791626, .y = -1.7024508714675903, .z = -2.39114809036254 };
         return .{
             .position = pos,
             .view = Matrix4_gl.look_at(pos, .{}, .{ .y = 1.0 }),
@@ -1082,6 +1083,7 @@ pub const Camera3D = struct {
 pub const MeshVertex = struct {
     position: Vector3_gl,
     normal: Vector3_gl,
+    color: Vector4_gl,
 };
 
 pub const Mesh = struct {
@@ -1094,6 +1096,7 @@ pub const Mesh = struct {
     scale: Vector3_gl,
     // TODO (20 Apr 2022 sam): Technically, we can calculate model from position and scale...
     model: Matrix4_gl,
+    color: Vector4_gl = .{ .y = 1.0, .w = 1.0 },
     // view: Matrix4_gl,
     // projection: Matrix4_gl,
 
@@ -1184,47 +1187,47 @@ pub const Mesh = struct {
         const ny = Vector3_gl{ .y = -1.0 };
         const nz = Vector3_gl{ .z = -1.0 };
         // 0123 nz
-        self.vertices.append(MeshVertex{ .position = p0, .normal = nz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p1, .normal = nz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p2, .normal = nz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p0, .normal = nz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p2, .normal = nz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p3, .normal = nz }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p0, .normal = nz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p1, .normal = nz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p2, .normal = nz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p0, .normal = nz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p2, .normal = nz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p3, .normal = nz, .color = self.color }) catch unreachable;
         // 4765 pz
-        self.vertices.append(MeshVertex{ .position = p4, .normal = pz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p7, .normal = pz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p6, .normal = pz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p4, .normal = pz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p6, .normal = pz }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p5, .normal = pz }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p4, .normal = pz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p7, .normal = pz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p6, .normal = pz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p4, .normal = pz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p6, .normal = pz, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p5, .normal = pz, .color = self.color }) catch unreachable;
         // 0451 px
-        self.vertices.append(MeshVertex{ .position = p0, .normal = px }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p4, .normal = px }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p5, .normal = px }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p0, .normal = px }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p5, .normal = px }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p1, .normal = px }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p0, .normal = px, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p4, .normal = px, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p5, .normal = px, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p0, .normal = px, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p5, .normal = px, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p1, .normal = px, .color = self.color }) catch unreachable;
         // 7326 nx
-        self.vertices.append(MeshVertex{ .position = p7, .normal = nx }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p3, .normal = nx }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p2, .normal = nx }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p7, .normal = nx }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p2, .normal = nx }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p6, .normal = nx }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p7, .normal = nx, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p3, .normal = nx, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p2, .normal = nx, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p7, .normal = nx, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p2, .normal = nx, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p6, .normal = nx, .color = self.color }) catch unreachable;
         // 2156 ny
-        self.vertices.append(MeshVertex{ .position = p2, .normal = ny }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p1, .normal = ny }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p5, .normal = ny }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p2, .normal = ny }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p5, .normal = ny }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p6, .normal = ny }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p2, .normal = ny, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p1, .normal = ny, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p5, .normal = ny, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p2, .normal = ny, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p5, .normal = ny, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p6, .normal = ny, .color = self.color }) catch unreachable;
         // 7403 py
-        self.vertices.append(MeshVertex{ .position = p7, .normal = py }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p4, .normal = py }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p0, .normal = py }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p7, .normal = py }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p0, .normal = py }) catch unreachable;
-        self.vertices.append(MeshVertex{ .position = p3, .normal = py }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p7, .normal = py, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p4, .normal = py, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p0, .normal = py, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p7, .normal = py, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p0, .normal = py, .color = self.color }) catch unreachable;
+        self.vertices.append(MeshVertex{ .position = p3, .normal = py, .color = self.color }) catch unreachable;
         return self;
     }
 };
@@ -1378,7 +1381,7 @@ pub const MarchedCube = struct {
             if (self.flipped) normal = normal.negated();
             for (self.neighbors(idx)) |j| {
                 const position = pos[idx].lerped(pos[j], 0.5);
-                const ver = MeshVertex{ .position = position, .normal = normal };
+                const ver = MeshVertex{ .position = position, .normal = normal, .color = mesh.color };
                 mesh.vertices.append(ver) catch unreachable;
             }
             return 1;
@@ -1400,12 +1403,12 @@ pub const MarchedCube = struct {
             if (self.flipped) normal = normal.negated();
             // since the neighbours are in a consistent order, it means that
             // v[0] and v[3] are diagonal to each other.
-            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
             return 2;
         }
         if (set.len == 3) {
@@ -1442,7 +1445,7 @@ pub const MarchedCube = struct {
                 const v = pos[idx].lerped(pos[self.neighbors(idx)[open]], 0.5);
                 var n = v.subtracted(pos[idx]).normalized();
                 if (self.flipped) n = n.negated();
-                mesh.vertices.append(.{ .position = v, .normal = n }) catch unreachable;
+                mesh.vertices.append(.{ .position = v, .normal = n, .color = mesh.color }) catch unreachable;
             }
             // similar to set.len == 2, we create a surface using set_o[1..]
             // first we take the open side, v[0] and v[1] are one side
@@ -1463,12 +1466,12 @@ pub const MarchedCube = struct {
             var normal = center.subtracted(pos[set[middle]]).normalized();
             if (self.flipped) normal = normal.negated();
             // v[0] and v[3] are diagonal to each other.
-            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
-            mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
+            mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
             return 3;
         }
         if (set.len == 4) {
@@ -1521,12 +1524,12 @@ pub const MarchedCube = struct {
                     unreachable;
                 }
                 // p0 and p3 are diagonally opposite
-                mesh.vertices.append(.{ .position = p0, .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = p1, .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = p3, .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = p0, .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = p3, .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = p2, .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = p0, .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = p1, .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = p3, .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = p0, .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = p3, .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = p2, .normal = normal, .color = mesh.color }) catch unreachable;
                 return 4;
             }
             std.debug.assert(open_neighbors == 6);
@@ -1578,18 +1581,18 @@ pub const MarchedCube = struct {
                     }
                     verts.append(p) catch unreachable;
                 }
-                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
 
                 return 4;
             }
@@ -1667,27 +1670,27 @@ pub const MarchedCube = struct {
             }
             {
                 const normal = verts.items[0].subtracted(verts.items[1]).crossed(verts.items[0].subtracted(verts.items[2])).normalized();
-                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
             }
             {
                 const normal = verts.items[4].subtracted(verts.items[5]).crossed(verts.items[4].subtracted(verts.items[2])).normalized();
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
             }
             {
                 const normal = verts.items[4].subtracted(verts.items[1]).crossed(verts.items[4].subtracted(verts.items[2])).normalized();
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
             }
             {
                 const normal = verts.items[4].subtracted(verts.items[1]).crossed(verts.items[4].subtracted(verts.items[3])).normalized();
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
             }
             return 4;
         }
@@ -1764,4 +1767,16 @@ pub fn opposite_signs(a: glf, b: glf) bool {
     if (a > 0) return b < 0;
     if (a < 0) return b > 0;
     return false;
+}
+
+pub fn noise(pos: Vector2, smoother: f32, seed: f32) f32 {
+    var n = perlin.stb_perlin_noise3(pos.x / smoother, pos.y / smoother, seed, 0, 0, 0);
+    n += 0.5;
+    n = std.math.max(0, n);
+    n = std.math.min(1, n);
+    return n;
+}
+
+pub fn noise_range(pos: Vector2, smoother: f32, seed: f32, min: f32, max: f32) f32 {
+    return lerpf(min, max, noise(pos, smoother, seed));
 }

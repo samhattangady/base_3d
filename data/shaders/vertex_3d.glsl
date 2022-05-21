@@ -1,10 +1,11 @@
 #version 330 core
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
-// layout (location = 2) in vec4 in_color;
+layout (location = 2) in vec4 in_color;
 // layout (location = 3) in vec2 in_texCoord;
 
 out vec4 vert_color;
+out float vert_shadow;
 out vec2 vert_texCoord;
 out vec4 shadow_pos;
 
@@ -21,6 +22,7 @@ void main()
     shadow_pos = light_proj * light_view * out_pos;
     vec3 light = normalize(vec3(1.0, -16.0, -6.0));
     float l = (dot(light, normal) * 0.5) + 0.5;
-    vert_color = vec4(vec3(l), 1.0);
+    vert_shadow = l;
+    vert_color = in_color;
     vert_texCoord = vec2(0.0);
 }

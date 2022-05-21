@@ -207,7 +207,7 @@ pub const Vines = struct {
         self.vines.append(vine) catch unreachable;
     }
 
-    pub fn regenerate_mesh(self: *Self, raw_amount: glf) void {
+    pub fn regenerate_mesh(self: *Self, raw_amount: glf, ticks: u32) void {
         self.mesh.clear();
         self.leaf_mesh.clear();
         if (raw_amount <= 0) return;
@@ -260,30 +260,37 @@ pub const Vines = struct {
             }
         }
         for (self.leaves.items) |leaf| {
+            const pos1 = helpers.Vector2{ .x = leaf.position.x, .y = leaf.position.z };
+            const pos2 = helpers.Vector2{ .x = leaf.position.x, .y = leaf.position.y };
+            const speed = helpers.noise_range(pos2, 4, 0, 2400, 3400);
+            const displacement: glf = helpers.noise(pos1, 4, @intToFloat(glf, ticks) / speed);
+            const displacement2: glf = helpers.noise(pos2, 4, @intToFloat(glf, ticks) / speed);
             // TODO (04 May 2022 sam): Does this handle the last few leaves that
             // that are near scale = 0 correctly?
             // TODO (04 May 2022 sam): We want leaves that are viewed from above to
             // have different normals from below.
             const end_scale = leaf.start_scale - LEAF_GROWTH_TIME;
             var leaf_growth = std.math.clamp(helpers.unlerpf(leaf.start_scale, end_scale, (1.0 - amount)), 0.0, 1.0);
+            const perp = leaf.direction.crossed(leaf.axis);
             leaf_growth = helpers.easeinoutf(0.0, 1.0, leaf_growth);
             if (leaf_growth == 0) continue;
             const p1 = leaf.position;
-            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH * leaf_growth)).added(leaf.axis.scaled(LEAF_LENGTH * 0.1 * leaf_growth));
+            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH * leaf_growth)).added(leaf.axis.scaled(LEAF_LENGTH * 0.1 * leaf_growth)).added(perp.scaled(displacement * 0.8 * LEAF_WIDTH)).added(leaf.axis.scaled(displacement2 * 0.3 * LEAF_WIDTH));
             const mid = p1.added(leaf.direction.scaled(LEAF_LENGTH * 0.5 * leaf_growth));
-            const perp = leaf.direction.crossed(leaf.axis);
             const p3 = mid.added(perp.scaled(LEAF_WIDTH * leaf_growth));
             const p4 = mid.added(perp.scaled(-LEAF_WIDTH * leaf_growth));
-            const v1 = MeshVertex{ .position = p1, .normal = leaf.axis.lerped(mid.subtracted(p1).normalized(), 0.3).normalized() };
-            const v2 = MeshVertex{ .position = p2, .normal = leaf.axis.lerped(mid.subtracted(p2).normalized(), 0.3).normalized() };
-            const v3 = MeshVertex{ .position = p3, .normal = leaf.axis.lerped(mid.subtracted(p3).normalized(), 0.3).normalized() };
-            const v4 = MeshVertex{ .position = p4, .normal = leaf.axis.lerped(mid.subtracted(p4).normalized(), 0.3).normalized() };
-            self.leaf_mesh.vertices.append(v1) catch unreachable;
-            self.leaf_mesh.vertices.append(v2) catch unreachable;
-            self.leaf_mesh.vertices.append(v3) catch unreachable;
+            const base_color = helpers.Vector4_gl.lerp(self.leaf_mesh.color, .{ .x = 1.0, .y = 0.4, .z = 0.4, .w = 1.0 }, 0.5);
+            const tip_color = helpers.Vector4_gl.lerp(self.leaf_mesh.color, .{ .x = 1.0, .y = 1.0, .z = 0.2, .w = 1.0 }, 0.5);
+            const v1 = MeshVertex{ .position = p1, .normal = leaf.axis.lerped(mid.subtracted(p1).normalized(), 0.3).normalized(), .color = base_color };
+            const v2 = MeshVertex{ .position = p2, .normal = leaf.axis.lerped(mid.subtracted(p2).normalized(), 0.3).normalized(), .color = tip_color };
+            const v3 = MeshVertex{ .position = p3, .normal = leaf.axis.lerped(mid.subtracted(p3).normalized(), 0.3).normalized(), .color = self.leaf_mesh.color };
+            const v4 = MeshVertex{ .position = p4, .normal = leaf.axis.lerped(mid.subtracted(p4).normalized(), 0.3).normalized(), .color = self.leaf_mesh.color };
             self.leaf_mesh.vertices.append(v1) catch unreachable;
             self.leaf_mesh.vertices.append(v4) catch unreachable;
+            self.leaf_mesh.vertices.append(v3) catch unreachable;
             self.leaf_mesh.vertices.append(v2) catch unreachable;
+            self.leaf_mesh.vertices.append(v4) catch unreachable;
+            self.leaf_mesh.vertices.append(v3) catch unreachable;
         }
     }
 
@@ -298,7 +305,8 @@ pub const Vines = struct {
             var angle: glf = 0.0;
             while (angle < helpers.TWO_PI) : (angle += helpers.TWO_PI / (NUM_EDGES - 1.0)) {
                 const p = p1.rotated_about_point_axis(vp.position, vp.direction, angle);
-                vertices.append(.{ .position = p, .normal = p.subtracted(vp.position).normalized() }) catch unreachable;
+                const color = helpers.Vector4_gl.lerp(self.mesh.color, .{ .x = 0.2, .w = 1.0 }, 0.1 * angle / helpers.TWO_PI);
+                vertices.append(.{ .position = p, .normal = p.subtracted(vp.position).normalized(), .color = color }) catch unreachable;
             }
             if (false) {
                 var cube = Mesh.unit_cube(self.arena);
@@ -313,7 +321,7 @@ pub const Vines = struct {
             const p0 = points[0];
             const size = vertices.items[0].position.subtracted(p0.position).length();
             const base = p0.position.added(p0.direction.scaled(-size * 0.5));
-            const base_vertex = MeshVertex{ .position = base, .normal = p0.direction.negated() };
+            const base_vertex = MeshVertex{ .position = base, .normal = p0.direction.negated(), .color = self.mesh.color };
             var j: usize = 0;
             while (j < NUM_EDGESi) : (j += 1) {
                 const v0 = vertices.items[j];
@@ -348,7 +356,7 @@ pub const Vines = struct {
             const p0 = points[points.len - 1];
             const size = vertices.items[vertices.items.len - 1].position.subtracted(p0.position).length();
             const tip = p0.position.added(p0.direction.scaled(size * 1.0));
-            const tip_vertex = MeshVertex{ .position = tip, .normal = p0.direction };
+            const tip_vertex = MeshVertex{ .position = tip, .normal = p0.direction, .color = self.mesh.color };
             var j: usize = 0;
             const last_loop = vertices.items.len - NUM_EDGESi;
             while (j < NUM_EDGESi) : (j += 1) {

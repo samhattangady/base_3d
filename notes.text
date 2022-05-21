@@ -142,3 +142,9 @@ Etc.
 Lets see what this is. Then scope it out. And then figure out how we want it
 to go. I think there is supposed to be a shadow map. But its not working. Lets
 see why that might be the case.
+
+---
+
+21 May 2022:
+So lets get some more work done on this now. We just added colors. What else
+can we be adding? I think the motion to leaves would be a next step.

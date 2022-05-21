@@ -149,6 +149,8 @@ pub const Renderer = struct {
         c.glEnableVertexAttribArray(0);
         c.glVertexAttribPointer(1, 3, c.GL_FLOAT, c.GL_FALSE, @sizeOf(MeshVertex), @intToPtr(*const anyopaque, @offsetOf(MeshVertex, "normal")));
         c.glEnableVertexAttribArray(1);
+        c.glVertexAttribPointer(2, 4, c.GL_FLOAT, c.GL_FALSE, @sizeOf(MeshVertex), @intToPtr(*const anyopaque, @offsetOf(MeshVertex, "color")));
+        c.glEnableVertexAttribArray(2);
         try self.init_shader_program(VERTEX_3D_BASE_FILE, FRAGMENT_3D_FILE, &self.base_shader);
     }
 
@@ -305,6 +307,11 @@ pub const Renderer = struct {
         {
             const uniform_location = c.glGetUniformLocation(self.base_shader.program, "light_proj");
             c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, self.shadow_map.light_cam.projection.pointer());
+        }
+        {
+            const uniform_location = c.glGetUniformLocation(self.base_shader.program, "color");
+            const color = mesh.color;
+            c.glUniform4f(uniform_location, color.x, color.y, color.z, color.w);
         }
         if (shadows) {
             c.glActiveTexture(c.GL_TEXTURE0);

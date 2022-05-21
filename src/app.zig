@@ -24,7 +24,8 @@ const Mesh = helpers.Mesh;
 const MarchedCube = helpers.MarchedCube;
 const TYPING_BUFFER_SIZE = 16;
 const glf = c.GLfloat;
-const ANIM_TICKS_LENGTH = 20000;
+const ANIM_TICKS_LENGTH = 10000;
+const AGING_TICKS_LENGTH = 2000;
 
 const InputKey = enum {
     shift,
@@ -152,8 +153,10 @@ pub const App = struct {
     vines: Vines,
     playing: bool = false,
     amount: glf = 0,
+    leaf_age_amount: glf = 0,
     debug: c.GLint = 0,
     hide_leaves: bool = false,
+    aging: bool = false,
 
     pub fn new(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return Self{
@@ -168,6 +171,9 @@ pub const App = struct {
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
         sdf_count = 0;
+        self.cube.color = .{ .x = 0.4, .y = 0.3, .z = 0.35, .w = 1.0 };
+        self.vines.mesh.color = .{ .x = 0.6, .y = 0.4, .z = 0.4, .w = 1.0 };
+        self.vines.leaf_mesh.color = .{ .x = 0.45, .y = 0.65, .z = 0.3, .w = 1.0 };
         self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
         sdf_count = 0;
         self.cube.align_normals(buffer_sdf);
@@ -205,7 +211,7 @@ pub const App = struct {
             }
         }
         const s2 = std.time.milliTimestamp();
-        self.vines.regenerate_mesh(0.99999);
+        self.vines.regenerate_mesh(0.99999, 0);
         const s3 = std.time.milliTimestamp();
         std.debug.print("mesh regen took {d} ticks\n", .{s3 - s2});
         if (false) {
@@ -306,9 +312,7 @@ pub const App = struct {
         self.debug = if (self.inputs.get_key(.shift).is_down) 1 else 0;
         self.hide_leaves = self.inputs.get_key(.tab).is_down;
         if (self.inputs.mouse.r_button.is_down) {
-            const amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
-            if (false) std.debug.print("amount = {d}\n", .{amount});
-            self.vines.regenerate_mesh(amount);
+            self.amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
         }
         self.camera_controls();
         if (self.inputs.get_key(.space).is_clicked) {
@@ -316,7 +320,17 @@ pub const App = struct {
                 self.playing = false;
             } else {
                 self.amount = 0.0;
+                self.leaf_age_amount = 0.0;
                 self.playing = true;
+                self.aging = false;
+            }
+        }
+        if (self.inputs.get_key(.tab).is_clicked) {
+            if (self.aging) {
+                self.aging = false;
+            } else {
+                self.aging = true;
+                self.leaf_age_amount = 0.0;
             }
         }
         if (self.playing) {
@@ -325,14 +339,24 @@ pub const App = struct {
             if (self.amount > 1.0) {
                 self.amount = 1.0;
                 self.playing = false;
+                self.aging = true;
             }
-            self.vines.regenerate_mesh(self.amount);
             if (false) {
                 const dist = self.cam3d.position.distance_to(self.cam3d.target);
                 self.cam3d.position = self.vines.tip.subtracted(self.cam3d.target).normalized().scaled(dist);
                 self.cam3d.update_view();
             }
         }
+        if (self.aging) {
+            const change = @intToFloat(glf, delta) / AGING_TICKS_LENGTH;
+            self.leaf_age_amount += change;
+            if (self.leaf_age_amount > 1.0) {
+                self.leaf_age_amount = 1.0;
+                self.aging = false;
+            }
+        }
+        self.vines.leaf_mesh.color = helpers.Vector4_gl.lerp(.{ .x = 0.45, .y = 0.65, .z = 0.3, .w = 1.0 }, .{ .x = 0.65, .y = 0.45, .z = 0.3, .w = 1.0 }, self.leaf_age_amount);
+        self.vines.regenerate_mesh(self.amount, self.ticks);
     }
 
     pub fn camera_controls(self: *Self) void {
