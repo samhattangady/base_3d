@@ -301,8 +301,10 @@ pub const Vines = struct {
         if (fall_amount == 0.0) return leaf;
         const MAX_FALL: f32 = 2.0;
         const MAX_RADIUS: f32 = 0.4;
+        const MAX_SPIN: f32 = 2 * helpers.TWO_PI;
         const seed = Vector2{ .x = leaf.position.x * 1000, .y = leaf.position.z * 1000 };
         const leaf_fall_amount = MAX_FALL * helpers.noise_range(seed, 0.5, 0, 0.6, 1.0);
+        const leaf_spin = MAX_SPIN * helpers.noise_range(seed, 0.5, 2000, 0.6, 1.0);
         const amount1 = helpers.noise_range(seed, 1, 3000, 0.1, 0.4);
         const amount2 = amount1 + helpers.noise_range(seed, 1, 7000, 0.1, 0.4);
         const amount3 = amount2 + helpers.noise_range(seed, 1, 15000, 0.1, 0.4);
@@ -321,6 +323,7 @@ pub const Vines = struct {
         const pos3 = ring3_center.added(.{ .x = ring3_radius }).rotated_about_point_axis(ring3_center, .{ .y = 1 }, ring3_angle);
         var l = leaf;
         l.position = self.lerp_multiple(pos0, pos1, pos2, pos3, fall_amount);
+        l.direction = leaf.direction.rotated_about_point_axis(.{}, .{ .y = 1 }, fall_amount * leaf_spin);
         return l;
     }
 
