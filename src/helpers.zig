@@ -878,6 +878,13 @@ pub fn easeinoutf(start: f32, end: f32, t: f32) f32 {
     return start + ((end - start) * x);
 }
 
+pub fn quad_ease_in_f(start: f32, end: f32, t: f32) f32 {
+    // https://gizma.com/easing/
+    // t goes from 0 to 1, as ret val goes from start to end
+    const change = end - start;
+    return start + (change * t * t);
+}
+
 pub const SingleInput = struct {
     is_down: bool = false,
     is_clicked: bool = false, // For one frame when key is pressed
@@ -1166,6 +1173,12 @@ pub const Mesh = struct {
     pub fn align_normals(self: *Self, sdf: fn (Vector3_gl) glf) void {
         for (self.vertices.items) |*vtx| {
             vtx.normal = sdf_gradient(vtx.position, sdf);
+        }
+    }
+
+    pub fn update_vertex_colors(self: *Self) void {
+        for (self.vertices.items) |*vtx| {
+            vtx.color = self.color;
         }
     }
 

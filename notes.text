@@ -148,3 +148,14 @@ see why that might be the case.
 21 May 2022:
 So lets get some more work done on this now. We just added colors. What else
 can we be adding? I think the motion to leaves would be a next step.
+
+---
+
+25 May 2022:
+Next would be the leaves falling. So I actually don't want to do too much
+scaffolding, so lets do it where it is. So we need to figure out a way to do
+that. One way that we can do is basically make a ring of circles below the
+start point, then pick one point on that circle, and fancy lerp to it, where
+fancy lerp would involve some arcing / parabolic shape. Since we are doing
+this procedurally, we just have to figure out how to create the randomness
+factor using just noise. But that shouldn't be too hard...

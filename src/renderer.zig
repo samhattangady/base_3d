@@ -257,7 +257,9 @@ pub const Renderer = struct {
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.shadow_map.fbo);
         c.glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
         c.glClear(c.GL_DEPTH_BUFFER_BIT);
-        self.draw_mesh(app, &app.cube, &self.shadow_map.light_cam, false);
+        if (app.cube.color.w > 0.0) {
+            self.draw_mesh(app, &app.cube, &self.shadow_map.light_cam, false);
+        }
         self.draw_mesh(app, &app.vines.mesh, &self.shadow_map.light_cam, false);
         if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, &self.shadow_map.light_cam, false);
         // draw to screen
@@ -265,7 +267,9 @@ pub const Renderer = struct {
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
-        self.draw_mesh(app, &app.cube, self.cam3d, true);
+        if (app.cube.color.w > 0.0) {
+            self.draw_mesh(app, &app.cube, self.cam3d, true);
+        }
         self.draw_mesh(app, &app.vines.mesh, self.cam3d, true);
         if (!app.hide_leaves) self.draw_mesh(app, &app.vines.leaf_mesh, self.cam3d, true);
         self.draw_buffers();

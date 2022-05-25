@@ -25,7 +25,8 @@ const MarchedCube = helpers.MarchedCube;
 const TYPING_BUFFER_SIZE = 16;
 const glf = c.GLfloat;
 const ANIM_TICKS_LENGTH = 10000;
-const AGING_TICKS_LENGTH = 2000;
+const AGING_TICKS_LENGTH = 3000;
+const FALLING_TICKS_LENGTH = 5000;
 
 const InputKey = enum {
     shift,
@@ -154,9 +155,11 @@ pub const App = struct {
     playing: bool = false,
     amount: glf = 0,
     leaf_age_amount: glf = 0,
+    leaf_fall_amount: glf = 0,
     debug: c.GLint = 0,
     hide_leaves: bool = false,
     aging: bool = false,
+    falling: bool = false,
 
     pub fn new(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return Self{
@@ -211,7 +214,7 @@ pub const App = struct {
             }
         }
         const s2 = std.time.milliTimestamp();
-        self.vines.regenerate_mesh(0.99999, 0);
+        self.vines.regenerate_mesh(0.99999, 0, 0);
         const s3 = std.time.milliTimestamp();
         std.debug.print("mesh regen took {d} ticks\n", .{s3 - s2});
         if (false) {
@@ -310,7 +313,6 @@ pub const App = struct {
         self.debug_ray_march();
         self.vines.update(ticks, arena);
         self.debug = if (self.inputs.get_key(.shift).is_down) 1 else 0;
-        self.hide_leaves = self.inputs.get_key(.tab).is_down;
         if (self.inputs.mouse.r_button.is_down) {
             self.amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
         }
@@ -319,10 +321,12 @@ pub const App = struct {
             if (self.playing) {
                 self.playing = false;
             } else {
-                self.amount = 0.0;
+                self.amount = 0.9;
                 self.leaf_age_amount = 0.0;
+                self.leaf_fall_amount = 0.0;
                 self.playing = true;
                 self.aging = false;
+                self.falling = false;
             }
         }
         if (self.inputs.get_key(.tab).is_clicked) {
@@ -353,10 +357,21 @@ pub const App = struct {
             if (self.leaf_age_amount > 1.0) {
                 self.leaf_age_amount = 1.0;
                 self.aging = false;
+                self.falling = true;
+            }
+            self.cube.color.w = 1.0 - self.leaf_age_amount;
+            self.cube.update_vertex_colors();
+        }
+        if (self.falling) {
+            const change = @intToFloat(glf, delta) / FALLING_TICKS_LENGTH;
+            self.leaf_fall_amount += change;
+            if (self.leaf_fall_amount > 1.0) {
+                self.leaf_fall_amount = 1.0;
+                self.falling = false;
             }
         }
         self.vines.leaf_mesh.color = helpers.Vector4_gl.lerp(.{ .x = 0.45, .y = 0.65, .z = 0.3, .w = 1.0 }, .{ .x = 0.65, .y = 0.45, .z = 0.3, .w = 1.0 }, self.leaf_age_amount);
-        self.vines.regenerate_mesh(self.amount, self.ticks);
+        self.vines.regenerate_mesh(helpers.quad_ease_in_f(0.0, 1.0, self.amount), self.leaf_fall_amount, self.ticks);
     }
 
     pub fn camera_controls(self: *Self) void {

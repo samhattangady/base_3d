@@ -207,7 +207,7 @@ pub const Vines = struct {
         self.vines.append(vine) catch unreachable;
     }
 
-    pub fn regenerate_mesh(self: *Self, raw_amount: glf, ticks: u32) void {
+    pub fn regenerate_mesh(self: *Self, raw_amount: glf, fall_amount: glf, ticks: u32) void {
         self.mesh.clear();
         self.leaf_mesh.clear();
         if (raw_amount <= 0) return;
@@ -259,10 +259,11 @@ pub const Vines = struct {
                 self.tip = current_points.items[current_points.items.len - 1].position;
             }
         }
-        for (self.leaves.items) |leaf| {
+        for (self.leaves.items) |raw_leaf| {
+            const leaf = self.leaf_fall(raw_leaf, fall_amount);
             const pos1 = helpers.Vector2{ .x = leaf.position.x, .y = leaf.position.z };
             const pos2 = helpers.Vector2{ .x = leaf.position.x, .y = leaf.position.y };
-            const speed = helpers.noise_range(pos2, 4, 0, 2400, 3400);
+            const speed = helpers.noise_range(pos2, 4, 0, 400, 1400);
             const displacement: glf = helpers.noise(pos1, 4, @intToFloat(glf, ticks) / speed);
             const displacement2: glf = helpers.noise(pos2, 4, @intToFloat(glf, ticks) / speed);
             // TODO (04 May 2022 sam): Does this handle the last few leaves that
@@ -271,14 +272,15 @@ pub const Vines = struct {
             // have different normals from below.
             const end_scale = leaf.start_scale - LEAF_GROWTH_TIME;
             var leaf_growth = std.math.clamp(helpers.unlerpf(leaf.start_scale, end_scale, (1.0 - amount)), 0.0, 1.0);
+            const leaf_size = (1.0 - fall_amount) * helpers.noise_range(pos2, 1, 0, 0.4, 1.0);
             const perp = leaf.direction.crossed(leaf.axis);
             leaf_growth = helpers.easeinoutf(0.0, 1.0, leaf_growth);
             if (leaf_growth == 0) continue;
             const p1 = leaf.position;
-            const p2 = p1.added(leaf.direction.scaled(LEAF_LENGTH * leaf_growth)).added(leaf.axis.scaled(LEAF_LENGTH * 0.1 * leaf_growth)).added(perp.scaled(displacement * 0.8 * LEAF_WIDTH)).added(leaf.axis.scaled(displacement2 * 0.3 * LEAF_WIDTH));
-            const mid = p1.added(leaf.direction.scaled(LEAF_LENGTH * 0.5 * leaf_growth));
-            const p3 = mid.added(perp.scaled(LEAF_WIDTH * leaf_growth));
-            const p4 = mid.added(perp.scaled(-LEAF_WIDTH * leaf_growth));
+            const p2 = p1.added(leaf.direction.scaled(leaf_size * LEAF_LENGTH * leaf_growth)).added(leaf.axis.scaled(leaf_size * LEAF_LENGTH * 0.1 * leaf_growth)).added(perp.scaled(displacement * 0.8 * leaf_size * LEAF_WIDTH)).added(leaf.axis.scaled(displacement2 * 0.3 * leaf_size * LEAF_WIDTH));
+            const mid = p1.added(leaf.direction.scaled(leaf_size * LEAF_LENGTH * 0.5 * leaf_growth));
+            const p3 = mid.added(perp.scaled(leaf_size * LEAF_WIDTH * leaf_growth));
+            const p4 = mid.added(perp.scaled(leaf_size * -LEAF_WIDTH * leaf_growth));
             const base_color = helpers.Vector4_gl.lerp(self.leaf_mesh.color, .{ .x = 1.0, .y = 0.4, .z = 0.4, .w = 1.0 }, 0.5);
             const tip_color = helpers.Vector4_gl.lerp(self.leaf_mesh.color, .{ .x = 1.0, .y = 1.0, .z = 0.2, .w = 1.0 }, 0.5);
             const v1 = MeshVertex{ .position = p1, .normal = leaf.axis.lerped(mid.subtracted(p1).normalized(), 0.3).normalized(), .color = base_color };
@@ -292,6 +294,66 @@ pub const Vines = struct {
             self.leaf_mesh.vertices.append(v4) catch unreachable;
             self.leaf_mesh.vertices.append(v3) catch unreachable;
         }
+    }
+
+    fn leaf_fall(self: *Self, leaf: Leaf, fall_amount: glf) Leaf {
+        _ = self;
+        if (fall_amount == 0.0) return leaf;
+        const MAX_FALL: f32 = 2.0;
+        const MAX_RADIUS: f32 = 0.4;
+        const seed = Vector2{ .x = leaf.position.x * 1000, .y = leaf.position.z * 1000 };
+        const leaf_fall_amount = MAX_FALL * helpers.noise_range(seed, 0.5, 0, 0.6, 1.0);
+        const amount1 = helpers.noise_range(seed, 1, 3000, 0.1, 0.4);
+        const amount2 = amount1 + helpers.noise_range(seed, 1, 7000, 0.1, 0.4);
+        const amount3 = amount2 + helpers.noise_range(seed, 1, 15000, 0.1, 0.4);
+        const ring1_center = leaf.position.added(.{ .y = leaf_fall_amount * amount1 });
+        const ring2_center = leaf.position.added(.{ .y = leaf_fall_amount * amount2 });
+        const ring3_center = leaf.position.added(.{ .y = leaf_fall_amount * amount3 });
+        const ring1_angle = helpers.noise_range(seed, 1, 1000, 0, helpers.TWO_PI);
+        const ring2_angle = helpers.noise_range(seed, 1, 1200, 0, helpers.TWO_PI);
+        const ring3_angle = helpers.noise_range(seed, 1, 1500, 0, helpers.TWO_PI);
+        const ring1_radius = MAX_RADIUS * helpers.noise_range(seed, 1, 2000, 0.7, MAX_RADIUS);
+        const ring2_radius = MAX_RADIUS * helpers.noise_range(seed, 1, 2030, 0.7, MAX_RADIUS);
+        const ring3_radius = MAX_RADIUS * helpers.noise_range(seed, 1, 2060, 0.7, MAX_RADIUS);
+        const pos0 = leaf.position;
+        const pos1 = ring1_center.added(.{ .x = ring1_radius }).rotated_about_point_axis(ring1_center, .{ .y = 1 }, ring1_angle);
+        const pos2 = ring2_center.added(.{ .x = ring2_radius }).rotated_about_point_axis(ring2_center, .{ .y = 1 }, ring2_angle);
+        const pos3 = ring3_center.added(.{ .x = ring3_radius }).rotated_about_point_axis(ring3_center, .{ .y = 1 }, ring3_angle);
+        var l = leaf;
+        l.position = self.lerp_multiple(pos0, pos1, pos2, pos3, fall_amount);
+        return l;
+    }
+
+    fn lerp_multiple(self: *Self, p0: Vector3_gl, p1: Vector3_gl, p2: Vector3_gl, p3: Vector3_gl, amount: glf) Vector3_gl {
+        _ = self;
+        const dist1 = p0.distance_to(p1);
+        const dist2 = p1.distance_to(p2);
+        const dist3 = p2.distance_to(p3);
+        const total_dist = dist1 + dist2 + dist3;
+        const portion1 = dist1 / total_dist;
+        const portion2 = dist2 / total_dist;
+        const portion3 = dist3 / total_dist;
+        if (amount < portion1) {
+            const fract = amount / portion1;
+            return arc_lerp(p0, p1, fract);
+        } else if (amount < (portion1 + portion2)) {
+            const fract = (amount - portion1) / portion2;
+            return arc_lerp(p1, p2, fract);
+        } else {
+            const fract = (amount - portion1 - portion2) / portion3;
+            return arc_lerp(p2, p3, fract);
+        }
+    }
+
+    // bezier lerp with mid point between point right below p0 and mid of p0-p1
+    fn arc_lerp(p0: Vector3_gl, p1: Vector3_gl, amount: glf) Vector3_gl {
+        const fract = helpers.easeinoutf(0.0, 1.0, amount);
+        const mid1 = Vector3_gl{ .x = p0.x, .y = p1.y, .z = p0.z };
+        const mid2 = p0.lerped(p1, 0.5);
+        const mid = mid1.lerped(mid2, 0.5);
+        const m1 = p0.lerped(mid, fract);
+        const m2 = mid.lerped(p1, fract);
+        return m1.lerped(m2, fract);
     }
 
     fn generate_single_vine_mesh(self: *Self, points: []VinePoint) void {
