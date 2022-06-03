@@ -41,5 +41,6 @@ void main() {
     shadow /= 49.0;
     frag_color = mix(col, vec4(0.0, 0.0, 0.0, 1.0), vert_shadow * 0.1);
     frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), shadow * 0.2);
+    frag_color.w = vert_color.w;
 } 
 

@@ -27,6 +27,8 @@ const glf = c.GLfloat;
 const ANIM_TICKS_LENGTH = 10000;
 const AGING_TICKS_LENGTH = 3000;
 const FALLING_TICKS_LENGTH = 5000;
+const REWIND_ANIM_TICKS = 1300;
+const TOTAL_TICKS = ANIM_TICKS_LENGTH + AGING_TICKS_LENGTH + FALLING_TICKS_LENGTH;
 
 const InputKey = enum {
     shift,
@@ -160,6 +162,9 @@ pub const App = struct {
     hide_leaves: bool = false,
     aging: bool = false,
     falling: bool = false,
+    ticks_passed: u32 = 0,
+    // doing this because the rewind was not working correctly.
+    actual_ticks_passed: u32 = 0,
 
     pub fn new(allocator: std.mem.Allocator, arena: std.mem.Allocator) Self {
         return Self{
@@ -318,60 +323,88 @@ pub const App = struct {
         }
         self.camera_controls();
         if (self.inputs.get_key(.space).is_clicked) {
-            if (self.playing) {
-                self.playing = false;
-            } else {
-                self.amount = 0.9;
-                self.leaf_age_amount = 0.0;
-                self.leaf_fall_amount = 0.0;
-                self.playing = true;
-                self.aging = false;
-                self.falling = false;
-            }
+            self.playing = !self.playing;
         }
         if (self.inputs.get_key(.tab).is_clicked) {
-            if (self.aging) {
-                self.aging = false;
-            } else {
-                self.aging = true;
-                self.leaf_age_amount = 0.0;
-            }
+            std.debug.print("ticks_passed = {d}\n", .{self.ticks_passed});
+            std.debug.print("camera_position = {d}, {d}, {d}\n", .{ self.cam3d.position.x, self.cam3d.position.y, self.cam3d.position.z });
+        }
+        if (self.inputs.mouse.r_button.is_down) {
+            self.playing = false;
+            const fract = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
+            self.actual_ticks_passed = @floatToInt(u32, fract * TOTAL_TICKS);
         }
         if (self.playing) {
-            const change = @intToFloat(glf, delta) / ANIM_TICKS_LENGTH;
-            self.amount += change;
-            if (self.amount > 1.0) {
-                self.amount = 1.0;
+            self.actual_ticks_passed += delta;
+            if (self.actual_ticks_passed >= TOTAL_TICKS + REWIND_ANIM_TICKS) {
                 self.playing = false;
-                self.aging = true;
-            }
-            if (false) {
-                const dist = self.cam3d.position.distance_to(self.cam3d.target);
-                self.cam3d.position = self.vines.tip.subtracted(self.cam3d.target).normalized().scaled(dist);
-                self.cam3d.update_view();
             }
         }
-        if (self.aging) {
-            const change = @intToFloat(glf, delta) / AGING_TICKS_LENGTH;
-            self.leaf_age_amount += change;
-            if (self.leaf_age_amount > 1.0) {
-                self.leaf_age_amount = 1.0;
-                self.aging = false;
-                self.falling = true;
-            }
-            self.cube.color.w = 1.0 - self.leaf_age_amount;
-            self.cube.update_vertex_colors();
-        }
-        if (self.falling) {
-            const change = @intToFloat(glf, delta) / FALLING_TICKS_LENGTH;
-            self.leaf_fall_amount += change;
-            if (self.leaf_fall_amount > 1.0) {
-                self.leaf_fall_amount = 1.0;
-                self.falling = false;
-            }
-        }
+        self.update_ticks_passed(self.actual_ticks_passed);
+        self.update_amounts(self.ticks_passed);
+        self.update_camera(self.ticks_passed);
+        self.cube.color.w = 1.0 - self.leaf_age_amount;
+        self.cube.update_vertex_colors();
         self.vines.leaf_mesh.color = helpers.Vector4_gl.lerp(.{ .x = 0.45, .y = 0.65, .z = 0.3, .w = 1.0 }, .{ .x = 0.65, .y = 0.45, .z = 0.3, .w = 1.0 }, self.leaf_age_amount);
         self.vines.regenerate_mesh(helpers.quad_ease_in_f(0.0, 1.0, self.amount), self.leaf_fall_amount, self.ticks);
+    }
+
+    fn update_ticks_passed(self: *Self, ticks: u32) void {
+        self.ticks_passed = ticks;
+        if (self.ticks_passed > TOTAL_TICKS and self.ticks_passed < TOTAL_TICKS + REWIND_ANIM_TICKS) {
+            const t = ticks - TOTAL_TICKS;
+            const fract = 1.0 - @intToFloat(f32, t) / REWIND_ANIM_TICKS;
+            self.ticks_passed = @floatToInt(u32, fract * TOTAL_TICKS);
+        } else if (self.ticks_passed >= TOTAL_TICKS + REWIND_ANIM_TICKS) {
+            self.ticks_passed = 0;
+        }
+    }
+
+    fn update_amounts(self: *Self, ticks: u32) void {
+        if (ticks < ANIM_TICKS_LENGTH) {
+            self.amount = @intToFloat(f32, ticks) / @intToFloat(f32, ANIM_TICKS_LENGTH);
+        } else {
+            self.amount = 1.0;
+            if (ticks < (ANIM_TICKS_LENGTH + AGING_TICKS_LENGTH)) {
+                self.leaf_age_amount = @intToFloat(f32, ticks - ANIM_TICKS_LENGTH) / @intToFloat(f32, AGING_TICKS_LENGTH);
+            } else {
+                self.leaf_age_amount = 1.0;
+                if (ticks < (TOTAL_TICKS)) {
+                    self.leaf_fall_amount = @intToFloat(f32, ticks - ANIM_TICKS_LENGTH - AGING_TICKS_LENGTH) / @intToFloat(f32, FALLING_TICKS_LENGTH);
+                } else {
+                    self.leaf_fall_amount = 1.0;
+                    if (ticks < (TOTAL_TICKS + REWIND_ANIM_TICKS)) {
+                        const t = ticks - TOTAL_TICKS;
+                        const fract = 1.0 - @intToFloat(f32, t) / REWIND_ANIM_TICKS;
+                        self.update_amounts(@floatToInt(u32, fract * TOTAL_TICKS));
+                        _ = fract;
+                    }
+                }
+            }
+        }
+    }
+
+    fn update_camera(self: *Self, ticks_raw: u32) void {
+        var ticks_fract: f32 = undefined;
+        if (ticks_raw > TOTAL_TICKS and ticks_raw < TOTAL_TICKS + REWIND_ANIM_TICKS) {
+            const t = ticks_raw - TOTAL_TICKS;
+            const fract = 1.0 - (@intToFloat(f32, t) / REWIND_ANIM_TICKS);
+            ticks_fract = fract;
+        } else {
+            ticks_fract = @intToFloat(f32, ticks_raw) / TOTAL_TICKS;
+        }
+        const cam_start = Vector3_gl{ .x = 6.780282974243164, .y = -0.4565243124961853, .z = -0.8648737072944641 };
+        const x_rad = helpers.easeinoutf(-helpers.PI / 6.0, helpers.PI * 1.6, ticks_fract);
+        const y_rad = helpers.PI / 30.0 + helpers.easeinoutf(-helpers.PI / 12.0, helpers.PI / 8.0, ticks_fract);
+        const zoom = helpers.easeinoutf(1.0, 1.3, ticks_fract);
+        self.cam3d.position = cam_start.scaled(zoom).rotated_about_point_axis(self.cam3d.target, .{ .y = 1 }, x_rad);
+        const y_axis = Vector3_gl.cross(self.cam3d.position.subtracted(self.cam3d.target), .{ .y = 1 }).normalized();
+        self.cam3d.position = self.cam3d.position.rotated_about_point_axis(self.cam3d.target, y_axis, y_rad);
+        self.cam3d.update_view();
+    }
+
+    fn cam_lerp(p0: Vector3_gl, p1: Vector3_gl, amount: f32) Vector3_gl {
+        return p0.lerped(p1, amount);
     }
 
     pub fn camera_controls(self: *Self) void {
