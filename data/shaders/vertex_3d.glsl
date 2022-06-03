@@ -20,9 +20,9 @@ void main()
     vec4 out_pos =  model * vec4(position, 1.0);
     gl_Position = projection * view * out_pos;
     shadow_pos = light_proj * light_view * out_pos;
-    vec3 light = normalize(vec3(1.0, -16.0, -6.0));
+    vec3 light = normalize(vec3(4.2, -1.7, -2.3));
     float l = (dot(light, normal) * 0.5) + 0.5;
-    vert_shadow = l;
+    vert_shadow = 1.0 - l;
     vert_color = in_color;
     vert_texCoord = vec2(0.0);
 }

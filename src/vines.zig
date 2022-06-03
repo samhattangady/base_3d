@@ -17,7 +17,7 @@ const MeshVertex = helpers.MeshVertex;
 const glf = c.GLfloat;
 const sdf_check = helpers.sdf_check;
 const STEP_MULTIPLIER = 0.1;
-const BRANCH_PROB = 0.05;
+const BRANCH_PROB = 0.00;
 const FIRST_BRANCH = 20;
 // fraction of the total that the branch will be.
 const BRANCH_LENGTH = 0.06;
@@ -25,6 +25,8 @@ const LEAF_PROB = 0.7;
 const LEAF_LENGTH = 0.2;
 const LEAF_WIDTH = LEAF_LENGTH * 0.25;
 const LEAF_GROWTH_TIME = 0.04;
+const NUDGE_ANGLE_FACTOR = 1.0;
+const VINE_DIR_GRADIENT = false;
 
 comptime {
     std.debug.assert(LEAF_PROB <= 1.0);
@@ -152,6 +154,9 @@ pub const Vines = struct {
     fn grow_single_vine(self: *Self, point: Vector3_gl, direction: Vector3_gl, sdf_fn: fn (helpers.Vector3_gl) glf, step_size: glf, vine_length: glf, start_scale: glf, end_scale: glf) void {
         var pos = point;
         var dir = direction;
+        if (VINE_DIR_GRADIENT) {
+            dir = helpers.dir_sdf_gradient(point, sdf_fn).negated();
+        }
         var vine = Vine.init(self.allocator, start_scale, end_scale);
         if (!helpers.sdf_check(sdf_fn(point))) {
             if (helpers.sdf_along_direction(pos, dir, sdf_fn)) |p| {
@@ -542,7 +547,7 @@ pub const Vines = struct {
                     new_pos = helpers.xz_circle((a_neg + a_pos) / 2.0, rad).mat3_multiply(rot).added(pos);
                 }
             }
-            const angle = helpers.lerpf(-std.math.pi / 8.0, std.math.pi / 8.0, rand.float(glf));
+            const angle = NUDGE_ANGLE_FACTOR * helpers.lerpf(-std.math.pi / 8.0, std.math.pi / 8.0, rand.float(glf));
             const nudged_pos = new_pos.rotated_about_point_axis(pos, inside, angle);
             // This sometimes gives us an infinite loop, so it's an opt
             if (helpers.sdf_closest(nudged_pos, sdf_fn)) |closest| new_pos = closest;

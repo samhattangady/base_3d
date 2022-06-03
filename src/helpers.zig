@@ -1154,6 +1154,7 @@ pub const Mesh = struct {
 
     /// Use marching cubes algorithm to generate a mesh from an sdf function
     pub fn generate_from_sdf(self: *Self, sdf: fn (Vector3_gl) glf, center: Vector3_gl, bounds: Vector3_gl, cube_size: glf, arena: std.mem.Allocator) void {
+        self.clear();
         std.debug.print("Starting marching cubes\n", .{});
         // We use the edge of bounds for center of cube, not edge of cube...
         var x = center.x - bounds.x;
@@ -1314,18 +1315,20 @@ pub const MarchedCube = struct {
         var verts: [8]bool = undefined;
         for (pos) |p, i| verts[i] = sdf(p) < 0;
         if (self.num_trues(verts) > 4) self.flip_verts(&verts);
-        self.generate_mesh(pos, center, verts, mesh, arena);
+        self.generate_mesh(pos, center, verts, sdf, mesh, arena);
     }
 
-    pub fn generate_mesh(self: *Self, pos: [8]Vector3_gl, center: Vector3_gl, verts: [8]bool, mesh: *Mesh, arena: std.mem.Allocator) void {
+    pub fn generate_mesh(self: *Self, pos: [8]Vector3_gl, center: Vector3_gl, verts: [8]bool, sdf: fn (Vector3_gl) glf, mesh: *Mesh, arena: std.mem.Allocator) void {
         // TODO (26 Apr 2022 sam): Cache all 256 possibilities for the sets, and then
         // use that in further marching.
         var handled = [8]bool{ false, false, false, false, false, false, false, false };
         // create all the sets. sets are multiple points that are connected to
         // each other and inside the field.
         var sets = std.ArrayList(std.ArrayList(usize)).init(arena);
-        for (sets.items) |*set| set.deinit();
-        defer sets.deinit();
+        defer {
+            for (sets.items) |*set| set.deinit();
+            sets.deinit();
+        }
         for (verts) |vert, i| {
             if (!vert) continue;
             if (handled[i]) continue;
@@ -1375,14 +1378,14 @@ pub const MarchedCube = struct {
         }
         for (sets.items) |set| {
             if (set.items.len == 5) std.debug.print("verts = {any}\n", .{verts});
-            const created = self.create_triangles(set.items, pos, center, mesh, arena);
+            const created = self.create_triangles(set.items, pos, center, sdf, mesh, arena);
             _ = created;
             // if (created == 0) std.debug.print("{any} was not rendered\n", .{set});
         }
     }
 
     /// generates mesh based on the number of points.
-    fn create_triangles(self: *Self, set: []usize, pos: [8]Vector3_gl, center: Vector3_gl, mesh: *Mesh, arena: std.mem.Allocator) u8 {
+    fn create_triangles(self: *Self, set: []usize, pos: [8]Vector3_gl, center: Vector3_gl, sdf: fn (Vector3_gl) glf, mesh: *Mesh, arena: std.mem.Allocator) u8 {
         // https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/MarchingCubes.svg/350px-MarchingCubes.svg.png
         std.debug.assert(set.len > 0);
         std.debug.assert(set.len < 5);
@@ -1393,7 +1396,8 @@ pub const MarchedCube = struct {
             var normal = pos[idx].subtracted(center).negated().normalized();
             if (self.flipped) normal = normal.negated();
             for (self.neighbors(idx)) |j| {
-                const position = pos[idx].lerped(pos[j], 0.5);
+                const fract = get_sdf_fract(pos[idx], pos[j], sdf);
+                const position = pos[idx].lerped(pos[j], fract);
                 const ver = MeshVertex{ .position = position, .normal = normal, .color = mesh.color };
                 mesh.vertices.append(ver) catch unreachable;
             }
@@ -1407,8 +1411,8 @@ pub const MarchedCube = struct {
             for (set) |idx| {
                 for (self.neighbors(idx)) |j| {
                     if (contains(set, j)) continue;
-                    verts.append(pos[idx].lerped(pos[j], 0.5)) catch
-                        unreachable;
+                    const fract = get_sdf_fract(pos[idx], pos[j], sdf);
+                    verts.append(pos[idx].lerped(pos[j], fract)) catch unreachable;
                 }
             }
             std.debug.assert(verts.items.len == 4);
@@ -1455,7 +1459,8 @@ pub const MarchedCube = struct {
             };
             // create a triangle with all the verts on top side
             for (set_o) |idx| {
-                const v = pos[idx].lerped(pos[self.neighbors(idx)[open]], 0.5);
+                const fract = get_sdf_fract(pos[idx], pos[self.neighbors(idx)[open]], sdf);
+                const v = pos[idx].lerped(pos[self.neighbors(idx)[open]], fract);
                 var n = v.subtracted(pos[idx]).normalized();
                 if (self.flipped) n = n.negated();
                 mesh.vertices.append(.{ .position = v, .normal = n, .color = mesh.color }) catch unreachable;
@@ -1466,13 +1471,15 @@ pub const MarchedCube = struct {
             var verts = std.ArrayList(Vector3_gl).init(arena);
             defer verts.deinit();
             for (set_o[1..]) |idx| {
-                verts.append(pos[idx].lerped(pos[self.neighbors(idx)[open]], 0.5)) catch unreachable;
+                const fract = get_sdf_fract(pos[idx], pos[self.neighbors(idx)[open]], sdf);
+                verts.append(pos[idx].lerped(pos[self.neighbors(idx)[open]], fract)) catch unreachable;
             }
             for (set_o[1..]) |idx| {
                 for (self.neighbors(idx)) |j, ji| {
                     if (contains(set, j)) continue;
                     if (ji == open) continue;
-                    verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
+                    const fract = get_sdf_fract(pos[idx], pos[j], sdf);
+                    verts.append(pos[idx].lerped(pos[j], fract)) catch unreachable;
                 }
             }
             std.debug.assert(verts.items.len == 4);
@@ -1501,11 +1508,16 @@ pub const MarchedCube = struct {
             if (open_neighbors == 4) {
                 if (DEBUG_MARCHING_CUBES) return 0;
                 var verts = std.ArrayList(Vector3_gl).init(arena);
+                // verts lerps between the points, but we need to check the midpoints
+                var mid_verts = std.ArrayList(Vector3_gl).init(arena);
                 defer verts.deinit();
+                defer mid_verts.deinit();
                 for (set) |idx| {
                     for (self.neighbors(idx)) |j| {
                         if (contains(set, j)) continue;
-                        verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
+                        const fract = get_sdf_fract(pos[idx], pos[j], sdf);
+                        verts.append(pos[idx].lerped(pos[j], fract)) catch unreachable;
+                        mid_verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
                     }
                 }
                 const normal = verts.items[0].subtracted(pos[set[0]]).normalized();
@@ -1518,17 +1530,17 @@ pub const MarchedCube = struct {
                 var p1: Vector3_gl = undefined;
                 var p2: Vector3_gl = undefined;
                 var p3: Vector3_gl = undefined;
-                if (num_coords_equal(verts.items[0], verts.items[3]) == 1) {
+                if (num_coords_equal(mid_verts.items[0], mid_verts.items[3]) == 1) {
                     p0 = verts.items[0];
                     p1 = verts.items[1];
                     p2 = verts.items[2];
                     p3 = verts.items[3];
-                } else if (num_coords_equal(verts.items[0], verts.items[2]) == 1) {
+                } else if (num_coords_equal(mid_verts.items[0], mid_verts.items[2]) == 1) {
                     p0 = verts.items[0];
                     p1 = verts.items[1];
                     p2 = verts.items[3];
                     p3 = verts.items[2];
-                } else if (num_coords_equal(verts.items[0], verts.items[1]) == 1) {
+                } else if (num_coords_equal(mid_verts.items[0], mid_verts.items[1]) == 1) {
                     p0 = verts.items[0];
                     p1 = verts.items[2];
                     p2 = verts.items[3];
@@ -1562,51 +1574,152 @@ pub const MarchedCube = struct {
             if (closed) |c_idx| {
                 if (DEBUG_MARCHING_CUBES) return 0;
                 // case 8 - hexagon.
-                var vtx: Vector3_gl = .{ .x = 999, .y = 999, .z = 999 };
-                var avgx: glf = 0.0;
-                var avgy: glf = 0.0;
-                var avgz: glf = 0.0;
-                for (set) |idx| {
-                    for (self.neighbors(idx)) |j| {
-                        if (contains(set, j)) continue;
-                        const vert = pos[idx].lerped(pos[j], 0.5);
-                        if (vtx.x == 999) vtx = vert;
-                        avgx += vert.x / 6.0;
-                        avgy += vert.y / 6.0;
-                        avgz += vert.z / 6.0;
-                    }
-                }
-                const mid = Vector3_gl{ .x = avgx, .y = avgy, .z = avgz };
-                const corner = pos[c_idx];
-                const normal = mid.subtracted(corner).normalized();
-                // we find the mid vert, and since we have the normal, we can rotate
-                // to find the verts that we need.
+                var v0: Vector3_gl = undefined;
+                var v1: Vector3_gl = undefined;
+                var v2: Vector3_gl = undefined;
+                var v3: Vector3_gl = undefined;
+                var v4: Vector3_gl = undefined;
+                var v5: Vector3_gl = undefined;
+                var idx2: usize = undefined;
+                var idx3: usize = undefined;
                 var verts = std.ArrayList(Vector3_gl).init(arena);
                 defer verts.deinit();
-                var ang: usize = 0;
-                if (Vector3_gl.distance(vtx, mid) > 0.2) {
-                    std.debug.print("vtx\n", .{});
-                }
-                while (ang < 6) : (ang += 1) {
-                    const p = vtx.rotated_about_point_axis(mid, normal, @intToFloat(glf, ang) * std.math.pi / -3.0);
-                    if (Vector3_gl.distance(p, mid) > 0.2) {
-                        std.debug.print("{d}: mid = {d},{d},{d}\nvtx= {d},{d},{d}\n", .{ ang, mid.x, mid.y, mid.z, p.x, p.y, p.z });
+                for (set) |idx| {
+                    if (idx == c_idx) continue;
+                    for (self.neighbors(idx)) |j| {
+                        if (contains(set, j)) continue;
+                        const fract = get_sdf_fract(pos[idx], pos[j], sdf);
+                        verts.append(pos[idx].lerped(pos[j], fract)) catch unreachable;
                     }
-                    verts.append(p) catch unreachable;
                 }
-                mesh.vertices.append(.{ .position = verts.items[0], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[1], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[5], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[2], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[3], .normal = normal, .color = mesh.color }) catch unreachable;
-                mesh.vertices.append(.{ .position = verts.items[4], .normal = normal, .color = mesh.color }) catch unreachable;
-
+                std.debug.assert(verts.items.len == 6);
+                // v0 is verts[0] and v1 is verts[1]
+                // v2 is closest to v0
+                // v3 is closest to v1
+                // v4 is closest to v2
+                // v5 is closest to v3
+                // v0 - v5 = vert[0] - verts[5];
+                v0 = verts.items[0];
+                v1 = verts.items[1];
+                {
+                    // finding v2;
+                    var min_dist_sqr: glf = 1000000.0;
+                    var min_dist_index: usize = 20;
+                    for (verts.items) |vtx, i| {
+                        if (i < 2) continue;
+                        const dist_sqr = vtx.distance_to_sqr(verts.items[0]);
+                        if (dist_sqr < min_dist_sqr) {
+                            min_dist_sqr = dist_sqr;
+                            min_dist_index = i;
+                        }
+                    }
+                    v2 = verts.items[min_dist_index];
+                    idx2 = min_dist_index;
+                }
+                {
+                    // finding v3;
+                    var min_dist_sqr: glf = 1000000.0;
+                    var min_dist_index: usize = 20;
+                    for (verts.items) |vtx, i| {
+                        if (i < 2) continue;
+                        const dist_sqr = vtx.distance_to_sqr(verts.items[1]);
+                        if (dist_sqr < min_dist_sqr) {
+                            min_dist_sqr = dist_sqr;
+                            min_dist_index = i;
+                        }
+                    }
+                    v3 = verts.items[min_dist_index];
+                    idx3 = min_dist_index;
+                }
+                {
+                    // finding v4;
+                    var min_dist_sqr: glf = 1000000.0;
+                    var min_dist_index: usize = 20;
+                    for (verts.items) |vtx, i| {
+                        if (i < 2) continue;
+                        if (i == idx2) continue;
+                        if (i == idx3) continue;
+                        const dist_sqr = vtx.distance_to_sqr(v2);
+                        if (dist_sqr < min_dist_sqr) {
+                            min_dist_sqr = dist_sqr;
+                            min_dist_index = i;
+                        }
+                    }
+                    v4 = verts.items[min_dist_index];
+                }
+                {
+                    // finding v5;
+                    var min_dist_sqr: glf = 1000000.0;
+                    var min_dist_index: usize = 20;
+                    for (verts.items) |vtx, i| {
+                        if (i < 2) continue;
+                        if (i == idx2) continue;
+                        if (i == idx3) continue;
+                        const dist_sqr = vtx.distance_to_sqr(v3);
+                        if (dist_sqr < min_dist_sqr) {
+                            min_dist_sqr = dist_sqr;
+                            min_dist_index = i;
+                        }
+                    }
+                    v5 = verts.items[min_dist_index];
+                }
+                // TODO (03 Jun 2022 sam): v2 should not be v3... check it?
+                if (true) {
+                    {
+                        std.debug.assert(!v0.is_equal(v1));
+                        std.debug.assert(!v0.is_equal(v2));
+                        std.debug.assert(!v0.is_equal(v3));
+                        std.debug.assert(!v0.is_equal(v4));
+                        std.debug.assert(!v0.is_equal(v5));
+                    }
+                    {
+                        std.debug.assert(!v1.is_equal(v0));
+                        std.debug.assert(!v1.is_equal(v2));
+                        std.debug.assert(!v1.is_equal(v3));
+                        std.debug.assert(!v1.is_equal(v4));
+                        std.debug.assert(!v1.is_equal(v5));
+                    }
+                    {
+                        std.debug.assert(!v2.is_equal(v1));
+                        std.debug.assert(!v2.is_equal(v0));
+                        std.debug.assert(!v2.is_equal(v3));
+                        std.debug.assert(!v2.is_equal(v4));
+                        std.debug.assert(!v2.is_equal(v5));
+                    }
+                    {
+                        std.debug.assert(!v3.is_equal(v1));
+                        std.debug.assert(!v3.is_equal(v2));
+                        std.debug.assert(!v3.is_equal(v0));
+                        std.debug.assert(!v3.is_equal(v4));
+                        std.debug.assert(!v3.is_equal(v5));
+                    }
+                    {
+                        std.debug.assert(!v4.is_equal(v1));
+                        std.debug.assert(!v4.is_equal(v2));
+                        std.debug.assert(!v4.is_equal(v3));
+                        std.debug.assert(!v4.is_equal(v0));
+                        std.debug.assert(!v4.is_equal(v5));
+                    }
+                    {
+                        std.debug.assert(!v5.is_equal(v1));
+                        std.debug.assert(!v5.is_equal(v2));
+                        std.debug.assert(!v5.is_equal(v3));
+                        std.debug.assert(!v5.is_equal(v4));
+                        std.debug.assert(!v5.is_equal(v0));
+                    }
+                }
+                mesh.vertices.append(.{ .position = v0, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v1, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v2, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v3, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v4, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v5, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v2, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v1, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v4, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v1, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v4, .normal = .{}, .color = mesh.color }) catch unreachable;
+                mesh.vertices.append(.{ .position = v3, .normal = .{}, .color = mesh.color }) catch unreachable;
                 return 4;
             }
             // case 9 and 14 are mirrored images. we treat them the same
@@ -1645,7 +1758,8 @@ pub const MarchedCube = struct {
             for (ps) |idx| {
                 for (self.neighbors(idx)) |j| {
                     if (contains(set, j)) continue;
-                    raw_verts.append(pos[idx].lerped(pos[j], 0.5)) catch unreachable;
+                    const fract = get_sdf_fract(pos[idx], pos[j], sdf);
+                    raw_verts.append(pos[idx].lerped(pos[j], fract)) catch unreachable;
                 }
             }
             std.debug.assert(raw_verts.items.len == 6);
@@ -1710,6 +1824,17 @@ pub const MarchedCube = struct {
         unreachable;
     }
 };
+
+// returns the fract between p0 and p1 such that p0.lerped(p1, fract) = 0
+fn get_sdf_fract(p0: Vector3_gl, p1: Vector3_gl, sdf: fn (Vector3_gl) glf) glf {
+    const d0 = sdf(p0);
+    const d1 = sdf(p1);
+    const dist = @fabs(d0 - d1);
+    const fract = @fabs(d0) / dist;
+    std.debug.assert(fract >= 0.0);
+    std.debug.assert(fract <= 1.0);
+    return fract;
+}
 
 pub fn contains(list: []usize, x: usize) bool {
     for (list) |l| {

@@ -128,13 +128,36 @@ pub fn sdf_cylinder(point: Vector3_gl, height: glf, radius: glf) glf {
 }
 
 var sdf_count: usize = 0;
+var model_num: usize = 6;
 
 pub fn my_sdf(point: Vector3_gl) glf {
     var d = sdf_default_cube(point);
-    var d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .z = 1 }, std.math.pi / 2.0), 3.13, 0.125);
-    d = smooth_sub(d2, d, 0.1);
+    if (model_num == 0) return d;
+    var d2: glf = undefined;
+    if (model_num == 1) {
+        d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.0, .z = 0.0 }, 0.5);
+        d = smooth_add(d, d2, 0.0);
+        return d;
+    }
+    if (model_num == 2) {
+        d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.5);
+        d = smooth_add(d, d2, 0.0);
+        return d;
+    }
+    if (model_num == 3) {
+        d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.3);
+        d = smooth_add(d, d2, 0.0);
+        return d;
+    }
+    if (model_num == 4) {
+        d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.3);
+        d = smooth_add(d, d2, 0.3);
+        return d;
+    }
     d2 = sdf_sphere(point, .{ .x = 0.5, .y = 0.5, .z = 0.5 }, 0.3);
     d = smooth_add(d, d2, 0.3);
+    d2 = sdf_cylinder(point.rotated_about_point_axis(.{}, .{ .z = 1 }, std.math.pi / 2.0), 3.13, 0.125);
+    d = smooth_sub(d2, d, 0.1);
     return d;
 }
 
@@ -159,7 +182,7 @@ pub const App = struct {
     leaf_age_amount: glf = 0,
     leaf_fall_amount: glf = 0,
     debug: c.GLint = 0,
-    hide_leaves: bool = false,
+    hide_leaves: bool = true,
     aging: bool = false,
     falling: bool = false,
     ticks_passed: u32 = 0,
@@ -179,10 +202,10 @@ pub const App = struct {
     pub fn init(self: *Self) !void {
         try self.typesetter.init(&self.cam2d, self.allocator);
         sdf_count = 0;
-        self.cube.color = .{ .x = 0.4, .y = 0.3, .z = 0.35, .w = 1.0 };
+        self.cube.color = .{ .x = 0.8, .y = 0.8, .z = 0.9, .w = 1.0 };
         self.vines.mesh.color = .{ .x = 0.6, .y = 0.4, .z = 0.4, .w = 1.0 };
         self.vines.leaf_mesh.color = .{ .x = 0.45, .y = 0.65, .z = 0.3, .w = 1.0 };
-        self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 20.0, self.arena);
+        self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 40.0, self.arena);
         sdf_count = 0;
         self.cube.align_normals(buffer_sdf);
         const start = std.time.milliTimestamp();
@@ -321,7 +344,11 @@ pub const App = struct {
         if (self.inputs.mouse.r_button.is_down) {
             self.amount = self.inputs.mouse.current_pos.x / self.cam2d.render_size().x;
         }
-        self.camera_controls();
+        if (self.inputs.mouse.m_button.is_clicked) {
+            model_num += 1;
+            self.cube.generate_from_sdf(buffer_sdf, .{}, .{ .x = 1.5, .y = 1.5, .z = 1.5 }, 1.5 / 40.0, self.arena);
+            self.cube.align_normals(buffer_sdf);
+        }
         if (self.inputs.get_key(.space).is_clicked) {
             self.playing = !self.playing;
         }
@@ -339,10 +366,11 @@ pub const App = struct {
             if (self.actual_ticks_passed >= TOTAL_TICKS + REWIND_ANIM_TICKS) {
                 self.playing = false;
             }
+            self.update_ticks_passed(self.actual_ticks_passed);
+            self.update_amounts(self.ticks_passed);
+            self.update_camera(self.ticks_passed);
         }
-        self.update_ticks_passed(self.actual_ticks_passed);
-        self.update_amounts(self.ticks_passed);
-        self.update_camera(self.ticks_passed);
+        self.camera_controls();
         self.cube.color.w = 1.0 - self.leaf_age_amount;
         self.cube.update_vertex_colors();
         self.vines.leaf_mesh.color = helpers.Vector4_gl.lerp(.{ .x = 0.45, .y = 0.65, .z = 0.3, .w = 1.0 }, .{ .x = 0.65, .y = 0.45, .z = 0.3, .w = 1.0 }, self.leaf_age_amount);

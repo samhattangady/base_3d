@@ -3,7 +3,7 @@
 layout(location = 0) out vec4 frag_color;
 
 in vec4 vert_color;
-in vec4 vert_shadow;
+in float vert_shadow;
 in vec2 vert_texCoord;
 in vec4 shadow_pos;
 
@@ -28,19 +28,20 @@ float shadow_calculation(vec4 pos) {
 void main() {
     vec4 col = vert_color;
     // TODO (16 May 2022 sam): Should this be passed as uniform?
-    float texel_size = 1.0 / 2096.0;
-    float shadow = 0.0;
-    for(int x = -3; x <= 3; ++x)
-    {
-        for(int y = -3; y <= 3; ++y)
-        {
-            vec4 new_pos = vec4(shadow_pos.xy + (vec2(x,y) * texel_size), shadow_pos.zw);
-            shadow += shadow_calculation(new_pos);        
-        }    
-    }
-    shadow /= 49.0;
-    frag_color = mix(col, vec4(0.0, 0.0, 0.0, 1.0), vert_shadow * 0.1);
-    frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), shadow * 0.2);
-    frag_color.w = vert_color.w;
+    // float texel_size = 1.0 / 2096.0;
+    // float shadow = 0.0;
+    // for(int x = -3; x <= 3; ++x)
+    // {
+    //     for(int y = -3; y <= 3; ++y)
+    //     {
+    //         vec4 new_pos = vec4(shadow_pos.xy + (vec2(x,y) * texel_size), shadow_pos.zw);
+    //         shadow += shadow_calculation(new_pos);        
+    //     }    
+    // }
+    // shadow /= 49.0;
+    // shadow = 0;
+    frag_color = mix(col, vec4(0.0, 0.0, 0.2, 1.0), vert_shadow * 0.5);
+    // frag_color = mix(frag_color, vec4(0.0, 0.0, 0.0, 1.0), shadow * 0.2);
+    // frag_color.w = vert_color.w;
 } 
 

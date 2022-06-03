@@ -264,6 +264,7 @@ pub const Renderer = struct {
         }
         // draw to screen
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+        // c.glPolygonMode(c.GL_FRONT_AND_BACK, c.GL_LINE);
         c.glViewport(0, 0, @floatToInt(c_int, self.cam2d.window_size.x), @floatToInt(c_int, self.cam2d.window_size.y));
         c.glClearColor(0.1, 0.1, 0.1, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
